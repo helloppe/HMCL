@@ -1,4 +1,6 @@
-# 贡献指南
+#  hmcl作者是glo
+
+ 贡献指南
 
 <!-- #BEGIN LANGUAGE_SWITCHER -->
 [English](Contributing.md) | **中文** (**简体**, [繁體](Contributing_zh_Hant.md))
@@ -13,33 +15,33 @@
 在安装 JDK 后，请确保 `JAVA_HOME` 环境变量指向符合需求的 JDK 目录。
 你可以这样查看 `JAVA_HOME` 指向的 JDK 版本:
 
-<details>
-<summary>Windows</summary>
+<详情>
+<摘要>Windows</摘要>
 
-PowerShell:
+PowerShell：
 ```
-PS > & "$env:JAVA_HOME/bin/java.exe" -version
-openjdk version "25" 2025-09-16 LTS
-OpenJDK Runtime Environment (build 25+37-LTS)
-OpenJDK 64-Bit Server VM (build 25+37-LTS, mixed mode, sharing)
+PS > & " $env:JAVA_HOME/bin/java.exe" -version
+openjdk 版本 "25" 2025-09-16 LTS
+OpenJDK 运行时环境 (build 25+37-LTS)
+OpenJDK 64位服务器虚拟机（构建 25+37-LTS，混合模式，共享）
 ```
 
-</details>
+</详情>
 
-<details>
-<summary>Linux/FreeBSD</summary>
+<详情>
+<摘要>Linux/FreeBSD</摘要>
 
 ```
 > $JAVA_HOME/bin/java -version
-openjdk version "25" 2025-09-16 LTS
-OpenJDK Runtime Environment (build 25+37-LTS)
-OpenJDK 64-Bit Server VM (build 25+37-LTS, mixed mode, sharing)
+openjdk 版本 "25" 2025-09-16 LTS
+OpenJDK 运行时环境 (build 25+37-LTS)
+OpenJDK 64位服务器虚拟机（构建 25+37-LTS，混合模式，共享）
 ```
 
-</details>
+</详情>
 
-<details>
-<summary>macOS</summary>
+<详情>
+<摘要>macOS</摘要>
 
 ```
 > /usr/libexec/java_home --exec java -version
@@ -87,7 +89,7 @@ HMCL 提供了一系列调试选项，用于控制启动器的行为。
 | `HMCL_FORCE_GPU`            |                                              | 指定是否强制使用 GPU 加速渲染            | `false`                                                                                                      |                                               |
 | `HMCL_ANIMATION_FRAME_RATE` |                                              | 指定 HMCL 的动画帧率                     | `60`                                                                                                         |                                               |
 | `HMCL_LANGUAGE`             |                                              | 指定 HMCL 的默认语言                     | 使用系统默认语言                                                                                             |                                               |
-| `HMCL_NATIVE_DECORATION`    | `-Dhmcl.nativeDecoration=<true/false/auto>`  | 指定否使用系统原生窗口装饰               | `auto`                                                                                                       |                                               |
+`HMCL_NATIVE_DECORATION`    | `-Dhmcl.nativeDecoration=<true/false/auto>`  | 指定否使用系统原生窗口装饰               | `auto`                                                                                                       |                                               |
 | `HMCL_UI_SCALE`             |                                              | 指定 HMCL 的 UI 缩放比例                 | 遵循系统当前的缩放比例                                                                                       | 支持倍数 (1.5)、百分比 (150%) 或 DPI (144dpi) |
 |                             | `-Dhmcl.dir=<path>`                          | 指定 HMCL 的当前数据文件夹               | `./.hmcl`                                                                                                    |                                               |
 |                             | `-Dhmcl.home=<path>`                         | 指定 HMCL 的用户数据文件夹               | Windows: `%APPDATA%\.hmcl`<br>Linux/BSD: `$XDG_DATA_HOME/hmcl`<br>macOS: `~Library/Application Support/hmcl` |                                               |
