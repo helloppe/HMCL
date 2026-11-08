@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.download;
 
 import com.jfoenix.controls.JFXButton;
@@ -10,11 +25,6 @@ import org.jackhuang.hmcl.addon.RemoteAddon;
 import org.jackhuang.hmcl.addon.repository.CurseForgeRemoteAddonRepository;
 import org.jackhuang.hmcl.download.*;
 import org.jackhuang.hmcl.download.game.GameRemoteVersion;
-import org.jackhuang.hmcl.game.GameComponentType;
-import org.jackhuang.hmcl.game.GameInstanceID;
-import org.jackhuang.hmcl.game.HMCLDependencyManager;
-import org.jackhuang.hmcl.game.HMCLGameBuilder;
-import org.jackhuang.hmcl.game.HMCLGameInstance;
 import org.jackhuang.hmcl.game.HMCLGameRepository;
 import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
@@ -26,164 +36,149 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.WeakListenerHolder;
 import org.jackhuang.hmcl.ui.animation.TransitionPane;
+import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
-import org.jackhuang.hmcl.ui.construct.TabController;
-import org.jackhuang.hmcl.ui.construct.TabItem;
+import org.jackhuang.hmcl.ui.construct.TabHeader;
 import org.jackhuang.hmcl.ui.construct.Validator;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
-import org.jackhuang.hmcl.ui.instances.DownloadListPage;
-import org.jackhuang.hmcl.ui.instances.HMCLLocalizedDownloadListPage;
-import org.jackhuang.hmcl.ui.instances.Instances;
+import org.jackhuang.hmcl.ui.versions.DownloadListPage;
+import org.jackhuang.hmcl.ui.versions.HMCLLocalizedDownloadListPage;
+import org.jackhuang.hmcl.ui.versions.VersionPage;
+import org.jackhuang.hmcl.ui.versions.Versions;
 import org.jackhuang.hmcl.ui.wizard.Navigation;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardProvider;
-import org.jackhuang.hmcl.util.FileNameSet;
 import org.jackhuang.hmcl.util.SettingsMap;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
-import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.io.FileUtils;
-import org.jackhuang.hmcl.util.versioning.GameVersionNumber;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage {
-    public static final org.jackhuang.hmcl.ui.instances.DownloadPage.DownloadCallback FOR_MOD =
+    public static final org.jackhuang.hmcl.ui.versions.DownloadPage.DownloadCallback FOR_MOD =
             (downloadProvider, repository, version, mod, file) -> download(downloadProvider, repository, version, file, "mods");
-    public static final org.jackhuang.hmcl.ui.instances.DownloadPage.DownloadCallback FOR_RESOURCE_PACK =
+    public static final org.jackhuang.hmcl.ui.versions.DownloadPage.DownloadCallback FOR_RESOURCE_PACK =
             (downloadProvider, repository, version, pack, file) -> download(downloadProvider, repository, version, file, "resourcepacks");
-    public static final org.jackhuang.hmcl.ui.instances.DownloadPage.DownloadCallback FOR_SHADER =
+    public static final org.jackhuang.hmcl.ui.versions.DownloadPage.DownloadCallback FOR_SHADER =
             (downloadProvider, repository, version, shader, file) -> download(downloadProvider, repository, version, file, "shaderpacks");
 
     private final ReadOnlyObjectWrapper<DecoratorPage.State> state = new ReadOnlyObjectWrapper<>(DecoratorPage.State.fromTitle(i18n("download"), -1));
-    /// Manages tab selection and content transitions independently of the sidebar.
-    private final TabController tabController;
-    /// The tab for choosing a game version to install.
-    private final TabItem<VersionsPage> newGameTab;
-    /// The tab for browsing and importing modpacks.
-    private final TabItem<DownloadListPage> modpackTab;
-    /// The tab for browsing downloadable mods.
-    private final TabItem<DownloadListPage> modTab;
-    /// The tab for browsing downloadable resource packs.
-    private final TabItem<DownloadListPage> resourcePackTab;
-    /// The tab for browsing downloadable shader packs.
-    private final TabItem<DownloadListPage> shaderTab;
-    /// The tab for browsing downloadable worlds.
-    private final TabItem<DownloadListPage> worldTab;
+    private final TabHeader tab;
+    private final TabHeader.Tab<VersionsPage> newGameTab = new TabHeader.Tab<>("newGameTab");
+    private final TabHeader.Tab<DownloadListPage> modTab = new TabHeader.Tab<>("modTab");
+    private final TabHeader.Tab<DownloadListPage> modpackTab = new TabHeader.Tab<>("modpackTab");
+    private final TabHeader.Tab<DownloadListPage> resourcePackTab = new TabHeader.Tab<>("resourcePackTab");
+    private final TabHeader.Tab<DownloadListPage> shaderTab = new TabHeader.Tab<>("shaderTab");
+    private final TabHeader.Tab<DownloadListPage> worldTab = new TabHeader.Tab<>("worldTab");
     private final TransitionPane transitionPane = new TransitionPane();
     private final DownloadNavigator versionPageNavigator = new DownloadNavigator();
 
     private WeakListenerHolder listenerHolder;
 
-    /// Creates the download tabs and fills the shared navigation sidebar.
     public DownloadPage() {
         this(null);
     }
 
-    /// Creates download navigation, optionally targeting an existing instance for modpack installation.
-    public DownloadPage(@Nullable GameInstanceID uploadInstance) {
-        this.newGameTab = new TabItem<>(() -> new VersionsPage(
-                versionPageNavigator,
-                i18n("install.installer.choose", i18n("install.installer.game")),
-                GameVersionNumber.unknown(),
-                DownloadProviders.getDownloadProvider(),
-                GameComponentType.GAME, versionPageNavigator::onGameSelected));
-        this.modpackTab = newDownloadListTab(() -> {
+    public DownloadPage(String uploadVersion) {
+        newGameTab.setNodeSupplier(loadVersionFor(() -> new VersionsPage(versionPageNavigator, i18n("install.installer.choose", i18n("install.installer.game")), "", DownloadProviders.getDownloadProvider(),
+                "game", versionPageNavigator::onGameSelected)));
+        modpackTab.setNodeSupplier(loadVersionFor(() -> {
             DownloadListPage page = HMCLLocalizedDownloadListPage.ofModPack((downloadProvider, repository, __, modpack, file) -> {
-                Instances.downloadModpackImpl(downloadProvider, repository, uploadInstance, modpack, file);
+                Versions.downloadModpackImpl(downloadProvider, repository, uploadVersion, modpack, file);
             }, false);
 
             JFXButton installLocalModpackButton = FXUtils.newRaisedButton(i18n("install.modpack"));
-            installLocalModpackButton.setOnAction(e -> Instances.importModpack());
+            installLocalModpackButton.setOnAction(e -> Versions.importModpack());
 
             page.getActions().add(installLocalModpackButton);
             return page;
-        });
-        this.modTab = newDownloadListTab(() -> HMCLLocalizedDownloadListPage.ofMod(FOR_MOD, true));
-        this.resourcePackTab = newDownloadListTab(() -> HMCLLocalizedDownloadListPage.ofResourcePack(FOR_RESOURCE_PACK, true));
-        this.shaderTab = newDownloadListTab(() -> HMCLLocalizedDownloadListPage.ofShaderPack(FOR_SHADER, true));
-        this.worldTab = newDownloadListTab(() -> new DownloadListPage(RemoteAddon.Type.WORLD, CurseForgeRemoteAddonRepository.getInstance()));
-
-        this.tabController = new TabController(transitionPane,
-                newGameTab,
-                modpackTab,
-                modTab,
-                resourcePackTab,
-                shaderTab,
-                worldTab
-        );
+        }));
+        modTab.setNodeSupplier(loadVersionFor(() -> HMCLLocalizedDownloadListPage.ofMod(FOR_MOD, true)));
+        resourcePackTab.setNodeSupplier(loadVersionFor(() -> HMCLLocalizedDownloadListPage.ofResourcePack(FOR_RESOURCE_PACK, true)));
+        shaderTab.setNodeSupplier(loadVersionFor(() -> HMCLLocalizedDownloadListPage.ofShaderPack(FOR_SHADER, true)));
+        worldTab.setNodeSupplier(loadVersionFor(() -> new DownloadListPage(CurseForgeRemoteAddonRepository.WORLDS)));
+        tab = new TabHeader(transitionPane, newGameTab, modpackTab, modTab, resourcePackTab, shaderTab, worldTab);
 
         GameDirectoryManager.registerVersionsListener(this::loadVersions);
 
-        tabController.selectTab(newGameTab);
+        tab.select(newGameTab);
 
-        getSidebar()
+        AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("download.game").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerTab(tabController, newGameTab, i18n("game"), SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
-                .addNavigationDrawerTab(tabController, modpackTab, i18n("modpack"), SVG.PACKAGE2, SVG.PACKAGE2_FILL)
+                .addNavigationDrawerTab(tab, newGameTab, i18n("game"), SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
+                .addNavigationDrawerTab(tab, modpackTab, i18n("modpack"), SVG.PACKAGE2, SVG.PACKAGE2_FILL)
                 .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerTab(tabController, modTab, i18n("mods"), SVG.EXTENSION, SVG.EXTENSION_FILL)
-                .addNavigationDrawerTab(tabController, resourcePackTab, i18n("resourcepack"), SVG.TEXTURE)
-                .addNavigationDrawerTab(tabController, shaderTab, i18n("download.shader"), SVG.WB_SUNNY, SVG.WB_SUNNY_FILL)
-                .addNavigationDrawerTab(tabController, worldTab, i18n("world"), SVG.PUBLIC);
+                .addNavigationDrawerTab(tab, modTab, i18n("mods"), SVG.EXTENSION, SVG.EXTENSION_FILL)
+                .addNavigationDrawerTab(tab, resourcePackTab, i18n("resourcepack"), SVG.TEXTURE)
+                .addNavigationDrawerTab(tab, shaderTab, i18n("download.shader"), SVG.WB_SUNNY, SVG.WB_SUNNY_FILL)
+                .addNavigationDrawerTab(tab, worldTab, i18n("world"), SVG.PUBLIC);
+        FXUtils.setLimitWidth(sideBar, 200);
+        setLeft(sideBar);
 
-        setContent(transitionPane);
+        setCenter(transitionPane);
     }
 
-    private static TabItem<DownloadListPage> newDownloadListTab(Supplier<DownloadListPage> pageSupplier) {
-        return new TabItem<>(() -> {
-            DownloadListPage page = pageSupplier.get();
-            page.loadInstance(HMCLGameInstance.Optional.empty(GameDirectoryManager.getSelectedRepository()));
-            return page;
-        });
+    private static <T extends Node> Supplier<T> loadVersionFor(Supplier<T> nodeSupplier) {
+        return () -> {
+            T node = nodeSupplier.get();
+            if (node instanceof VersionPage.GameInstanceLoadable loadable) {
+                loadable.loadInstance(GameDirectoryManager.getSelectedRepository(), null);
+            }
+            return node;
+        };
     }
 
-    public static void download(DownloadProvider downloadProvider, HMCLGameRepository repository, @Nullable GameInstanceID instanceId, RemoteAddon.Version file, String subdirectoryName) {
-        @Nullable HMCLGameInstance instance = instanceId != null
-                ? repository.findInstance(instanceId)
-                : repository.getSelectedInstance();
-        Path runDirectory = instance != null ? instance.getRunDirectory() : repository.getBaseDirectory();
+    public static void download(DownloadProvider downloadProvider, HMCLGameRepository repository, @Nullable String version, RemoteAddon.Version file, String subdirectoryName) {
+        if (version == null) version = repository.getSelectedInstance();
 
-        var targetPath = runDirectory.resolve(subdirectoryName);
+        Path runDirectory = repository.hasVersion(version) ? repository.getRunDirectory(version) : repository.getBaseDirectory();
 
-        FileNameSet existingPaths;
-        try {
-            existingPaths = FileNameSet.list(targetPath, null);
-        } catch (Exception e) {
-            LOG.warning("Failed to list folders in " + targetPath, e);
-            existingPaths = new FileNameSet(false);
+        Set<String> existingFiles;
+
+        try (var list = Files.list(runDirectory.resolve(subdirectoryName))) {
+            existingFiles = list.map(Path::getFileName)
+                    .map(Path::toString)
+                    .collect(Collectors.toSet());
+        } catch (IOException e) {
+            LOG.warning("Failed to list files in " + runDirectory.resolve(subdirectoryName), e);
+            existingFiles = Set.of();
         }
 
+        Set<String> finalExistingFiles = existingFiles;
+
         Controllers.prompt(i18n("archive.file.name"), (result, handler) -> {
-            Path dest = targetPath.resolve(result);
+            Path dest = runDirectory.resolve(subdirectoryName).resolve(result);
 
             Controllers.taskDialog(Task.composeAsync(() -> {
-                var task = new FileDownloadTask(downloadProvider.getDownloadCandidates(file.file().url()), dest);
+                var task = new FileDownloadTask(downloadProvider.injectURLWithCandidates(file.file().url()), dest);
                 task.setName(file.name());
                 return task;
             }).whenComplete(Schedulers.javafx(), exception -> {
                 if (exception != null) {
-                    if (!(exception instanceof CancellationException)) {
-                        Controllers.dialog(I18n.localizeErrorMessage(exception), i18n("install.failed.downloading"), MessageDialogPane.MessageType.ERROR);
+                    if (exception instanceof CancellationException) {
+                        Controllers.showToast(i18n("message.cancelled"));
+                    } else {
+                        Controllers.dialog(DownloadProviders.localizeErrorMessage(exception), i18n("install.failed.downloading"), MessageDialogPane.MessageType.ERROR);
                     }
                 } else {
                     Controllers.showToast(i18n("install.success"));
                 }
             }), i18n("message.downloading"), TaskCancellationAction.NORMAL);
             handler.resolve();
-        }, file.file().filename(), new Validator(i18n("install.new_game.malformed"), FileUtils::isNameValid), new Validator(i18n("game_directory.already_exists"), existingPaths::notContains));
+        }, file.file().filename(), new Validator(i18n("install.new_game.malformed"), FileUtils::isNameValid), new Validator(i18n("game_directory.already_exists"), (it) -> !finalExistingFiles.contains(it)));
 
     }
 
@@ -193,19 +188,19 @@ public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage
             if (repository.getGameDirectory() == GameDirectoryManager.getSelectedGameDirectory()) {
                 listenerHolder.add(FXUtils.onWeakChangeAndOperate(GameDirectoryManager.selectedInstanceProperty(), version -> {
                     if (modTab.isInitialized()) {
-                        modTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
+                        modTab.getNode().loadInstance(repository, null);
                     }
                     if (modpackTab.isInitialized()) {
-                        modpackTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
+                        modpackTab.getNode().loadInstance(repository, null);
                     }
                     if (resourcePackTab.isInitialized()) {
-                        resourcePackTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
+                        resourcePackTab.getNode().loadInstance(repository, null);
                     }
                     if (shaderTab.isInitialized()) {
-                        shaderTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
+                        shaderTab.getNode().loadInstance(repository, null);
                     }
                     if (worldTab.isInitialized()) {
-                        worldTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
+                        worldTab.getNode().loadInstance(repository, null);
                     }
                 }));
             }
@@ -218,25 +213,25 @@ public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage
     }
 
     public void showGameDownloads() {
-        tabController.selectTab(newGameTab, false);
+        tab.select(newGameTab, false);
     }
 
     public void showModpackDownloads() {
-        tabController.selectTab(modpackTab, false);
+        tab.select(modpackTab, false);
     }
 
     public DownloadListPage showResourcePackDownloads() {
-        tabController.selectTab(resourcePackTab, false);
+        tab.select(resourcePackTab, false);
         return resourcePackTab.getNode();
     }
 
     public DownloadListPage showModDownloads() {
-        tabController.selectTab(modTab, false);
+        tab.select(modTab, false);
         return modTab.getNode();
     }
 
     public void showWorldDownloads() {
-        tabController.selectTab(worldTab, false);
+        tab.select(worldTab, false);
     }
 
     private static final class DownloadNavigator implements Navigation {
@@ -292,7 +287,7 @@ public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage
 
     private static class VanillaInstallWizardProvider implements WizardProvider {
         private final HMCLGameRepository repository;
-        private final HMCLDependencyManager dependencyManager;
+        private final DefaultDependencyManager dependencyManager;
         private final DownloadProvider downloadProvider;
         private final GameRemoteVersion gameVersion;
 
@@ -307,58 +302,26 @@ public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage
         public void start(SettingsMap settings) {
             settings.put(ModpackPage.GAME_DIRECTORY, repository.getGameDirectory());
             settings.put(ModpackPage.REPOSITORY, repository);
-            settings.put(GameComponentType.GAME.getPatchId(), gameVersion);
+            settings.put(LibraryAnalyzer.LibraryType.MINECRAFT.getPatchId(), gameVersion);
         }
 
-        /// Captures the installation selections and defers reserving the instance until execution.
-        /// Registers cleanup for the eventual builder, including cancellation before its build task
-        /// starts. Successful completion selects the installed instance in the original repository.
-        ///
-        /// @param settings the installer selections and target instance id
-        /// @return a deferred build task retaining the builder task's stage hints
-        private Task<?> finishVersionDownloadingAsync(SettingsMap settings) {
-            @Nullable GameInstanceID instanceId = settings.get(AbstractInstallersPage.INSTANCE_ID);
-            if (instanceId == null) {
-                throw new IllegalStateException("Instance ID is not set");
-            }
+        private Task<Void> finishVersionDownloadingAsync(SettingsMap settings) {
+            GameBuilder builder = dependencyManager.gameBuilder();
 
-            String selectedGameVersion = ((ComponentRemoteVersion) settings.get(GameComponentType.GAME.getPatchId()))
-                    .getGameVersion().toString();
-            @Unmodifiable List<ComponentRemoteVersion> components = settings.asStringMap().entrySet().stream()
-                    .filter(entry -> !GameComponentType.GAME.getPatchId().equals(entry.getKey()))
-                    .map(Map.Entry::getValue)
-                    .filter(ComponentRemoteVersion.class::isInstance)
-                    .map(ComponentRemoteVersion.class::cast)
-                    .toList();
-            boolean modded = GameComponentType.MOD_LOADERS.stream()
-                    .anyMatch(componentType -> settings.get(componentType.getPatchId()) instanceof ComponentRemoteVersion);
-            boolean isolated = repository.shouldIsolateNewInstance(modded);
+            String name = (String) settings.get("name");
+            builder.name(name);
+            builder.gameVersion(((RemoteVersion) settings.get(LibraryAnalyzer.LibraryType.MINECRAFT.getPatchId())).getGameVersion());
 
-            AtomicReference<@Nullable HMCLGameBuilder> builderReference = new AtomicReference<>();
-            settings.put(TaskCleanup.KEY, () -> {
-                @Nullable HMCLGameBuilder builder = builderReference.get();
-                if (builder != null)
-                    builder.abort();
+            settings.asStringMap().forEach((key, value) -> {
+                if (!LibraryAnalyzer.LibraryType.MINECRAFT.getPatchId().equals(key)
+                        && value instanceof RemoteVersion remoteVersion)
+                    builder.version(remoteVersion);
             });
 
-            return Task.composeAsync(() -> {
-                try (HMCLGameBuilder builder = dependencyManager.newGameBuilder(instanceId)) {
-                    builderReference.set(builder);
-                    builder.component(GameComponentType.GAME, selectedGameVersion);
-                    components.forEach(builder::component);
-                    if (isolated) {
-                        builder.enableIsolation();
-                    }
-
-                    Task<?> buildTask = builder.buildAsync();
-                    buildTask.onDone().register(event -> {
-                        if (!event.isFailed()) {
-                            runInFX(() -> repository.setSelectedInstance(repository.getInstance(instanceId)));
-                        }
-                    });
-                    return buildTask;
-                }
-            });
+            repository.applyDefaultIsolationSettingForNewInstance(name, settings.isInstallingModdedVersion());
+            return builder.buildAsync().whenComplete(any -> {
+                repository.refreshVersions();
+            }).thenRunAsync(Schedulers.javafx(), () -> repository.setSelectedInstance(name));
         }
 
         @Override
@@ -374,7 +337,7 @@ public class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage
         public Node createPage(WizardController controller, int step, SettingsMap settings) {
             switch (step) {
                 case 0:
-                    return new InstallersPage(controller, repository, ((ComponentRemoteVersion) controller.getSettings().get("game")).getGameVersion(), downloadProvider);
+                    return new InstallersPage(controller, repository, ((RemoteVersion) controller.getSettings().get("game")).getGameVersion(), downloadProvider);
                 default:
                     throw new IllegalStateException("error step " + step + ", settings: " + settings + ", pages: " + controller.getPages());
             }

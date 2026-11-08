@@ -2,7 +2,7 @@
     -fx-hyperlink-fill: -monet-inverse-primary;
 }
 
-.tag {
+.two-line-list-item {
     -fixed-warning-tag-background: #2c0b0e;
 }
 
@@ -20,16 +20,4 @@
     -fixed-log-error-text-fill: #f9dedc;
     -fixed-log-fatal-background: #842029;
     -fixed-log-selected: #3e3e3e;
-}
-
-.addon-channel-icon.alpha .svg {
-    -fx-fill: #ff496e;
-}
-
-.addon-channel-icon.beta .svg {
-    -fx-fill: #ffa347;
-}
-
-.addon-channel-icon.release .svg {
-    -fx-fill: #1bd96a;
 }

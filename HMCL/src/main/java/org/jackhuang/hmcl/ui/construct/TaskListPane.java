@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.construct;
 
 import com.jfoenix.controls.JFXListView;
@@ -17,21 +32,52 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import org.jackhuang.hmcl.download.cleanroom.CleanroomInstallTask;
+import org.jackhuang.hmcl.download.fabric.FabricAPIInstallTask;
+import org.jackhuang.hmcl.download.fabric.FabricInstallTask;
+import org.jackhuang.hmcl.download.forge.ForgeNewInstallTask;
+import org.jackhuang.hmcl.download.forge.ForgeOldInstallTask;
+import org.jackhuang.hmcl.download.game.GameAssetDownloadTask;
 import org.jackhuang.hmcl.download.game.GameInstallTask;
+import org.jackhuang.hmcl.download.java.mojang.MojangJavaDownloadTask;
+import org.jackhuang.hmcl.download.legacyfabric.LegacyFabricInstallTask;
+import org.jackhuang.hmcl.download.liteloader.LiteLoaderInstallTask;
+import org.jackhuang.hmcl.download.neoforge.NeoForgeInstallTask;
+import org.jackhuang.hmcl.download.neoforge.NeoForgeOldInstallTask;
+import org.jackhuang.hmcl.download.optifine.OptiFineInstallTask;
+import org.jackhuang.hmcl.download.quilt.QuiltAPIInstallTask;
+import org.jackhuang.hmcl.download.quilt.QuiltInstallTask;
+import org.jackhuang.hmcl.game.HMCLModpackInstallTask;
+import org.jackhuang.hmcl.java.JavaInstallTask;
+import org.jackhuang.hmcl.modpack.MinecraftInstanceTask;
+import org.jackhuang.hmcl.modpack.ModpackInstallTask;
+import org.jackhuang.hmcl.modpack.ModpackUpdateTask;
+import org.jackhuang.hmcl.modpack.curse.CurseCompletionTask;
+import org.jackhuang.hmcl.modpack.curse.CurseInstallTask;
+import org.jackhuang.hmcl.modpack.mcbbs.McbbsModpackCompletionTask;
+import org.jackhuang.hmcl.modpack.mcbbs.McbbsModpackExportTask;
+import org.jackhuang.hmcl.modpack.modrinth.ModrinthCompletionTask;
+import org.jackhuang.hmcl.modpack.modrinth.ModrinthInstallTask;
+import org.jackhuang.hmcl.modpack.modrinth.ModrinthModpackExportTask;
+import org.jackhuang.hmcl.modpack.multimc.MultiMCModpackExportTask;
+import org.jackhuang.hmcl.modpack.multimc.MultiMCModpackInstallTask;
+import org.jackhuang.hmcl.modpack.server.ServerModpackCompletionTask;
+import org.jackhuang.hmcl.modpack.server.ServerModpackExportTask;
+import org.jackhuang.hmcl.modpack.server.ServerModpackLocalInstallTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
 import org.jackhuang.hmcl.task.TaskListener;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.util.FXThread;
-import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
@@ -118,15 +164,57 @@ public final class TaskListPane extends StackPane {
                 if (!task.getSignificance().shouldShow() || task.getName() == null)
                     return;
 
-                if (task instanceof GameInstallTask
-                        && task.getInheritedStage() != null
-                        && task.getInheritedStage().startsWith("hmcl.install.game")) {
-                    return;
+                if (task instanceof GameAssetDownloadTask) {
+                    task.setName(i18n("assets.download_all"));
+                } else if (task instanceof GameInstallTask) {
+                    if (task.getInheritedStage() != null && task.getInheritedStage().startsWith("hmcl.install.game"))
+                        return;
+                    task.setName(i18n("install.installer.install", i18n("install.installer.game")));
+                } else if (task instanceof CleanroomInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.cleanroom")));
+                } else if (task instanceof LegacyFabricInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.legacyfabric")));
+                } else if (task instanceof ForgeNewInstallTask || task instanceof ForgeOldInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.forge")));
+                } else if (task instanceof NeoForgeInstallTask || task instanceof NeoForgeOldInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.neoforge")));
+                } else if (task instanceof LiteLoaderInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.liteloader")));
+                } else if (task instanceof OptiFineInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.optifine")));
+                } else if (task instanceof FabricInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.fabric")));
+                } else if (task instanceof FabricAPIInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.fabric-api")));
+                } else if (task instanceof QuiltInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.quilt")));
+                } else if (task instanceof QuiltAPIInstallTask) {
+                    task.setName(i18n("install.installer.install", i18n("install.installer.quilt-api")));
+                } else if (task instanceof CurseCompletionTask || task instanceof ModrinthCompletionTask || task instanceof ServerModpackCompletionTask || task instanceof McbbsModpackCompletionTask) {
+                    task.setName(i18n("modpack.completion"));
+                } else if (task instanceof ModpackInstallTask) {
+                    task.setName(i18n("modpack.installing"));
+                } else if (task instanceof ModpackUpdateTask) {
+                    task.setName(i18n("modpack.update"));
+                } else if (task instanceof CurseInstallTask) {
+                    task.setName(i18n("modpack.installing.given", i18n("modpack.type.curse")));
+                } else if (task instanceof MultiMCModpackInstallTask) {
+                    task.setName(i18n("modpack.installing.given", i18n("modpack.type.multimc")));
+                } else if (task instanceof ModrinthInstallTask) {
+                    task.setName(i18n("modpack.installing.given", i18n("modpack.type.modrinth")));
+                } else if (task instanceof ServerModpackLocalInstallTask) {
+                    task.setName(i18n("install.installing") + ": " + i18n("modpack.type.server"));
+                } else if (task instanceof HMCLModpackInstallTask) {
+                    task.setName(i18n("modpack.installing.given", i18n("modpack.type.hmcl")));
+                } else if (task instanceof McbbsModpackExportTask || task instanceof MultiMCModpackExportTask || task instanceof ServerModpackExportTask || task instanceof ModrinthModpackExportTask) {
+                    task.setName(i18n("modpack.export"));
+                } else if (task instanceof MinecraftInstanceTask) {
+                    task.setName(i18n("modpack.scan"));
+                } else if (task instanceof MojangJavaDownloadTask) {
+                    task.setName(i18n("download.java"));
+                } else if (task instanceof JavaInstallTask) {
+                    task.setName(i18n("java.installing"));
                 }
-
-                @Nullable String localizedName = I18n.translateTaskName(task);
-                if (localizedName != null)
-                    task.setName(localizedName);
 
                 Platform.runLater(() -> {
                     ProgressListNode node = new ProgressListNode(task);
@@ -192,20 +280,25 @@ public final class TaskListPane extends StackPane {
     }
 
     private final class Cell extends ListCell<Node> {
-        private static final double STATUS_ICON_SIZE = 14;
+        private static final double STATUS_ICON_SIZE = 16;
         private static final Insets PROGRESS_BAR_MARGIN = new Insets(2, 0, 0, 0);
+
+        private static final List<String> STAGE_STYLES = List.of(
+                "stage-waiting", "stage-running", "stage-success", "stage-failed");
 
         private final BorderPane pane = new BorderPane();
         private final StackPane left = new StackPane();
         private final Label title = new Label();
         private final Label message = new Label();
+        private final Label percent = new Label();
+        private final HBox statusBox = new HBox(8);
         private final JFXProgressBar bar = new JFXProgressBar();
 
         private WeakReference<StageNode> prevStageNodeRef;
         private StatusChangeListener statusChangeListener;
 
         private Cell() {
-            setPadding(new Insets(0, 0, 4, 0));
+            setPadding(new Insets(0, 0, 10, 0));
 
             prefWidthProperty().bind(cellWidth);
 
@@ -227,11 +320,34 @@ public final class TaskListPane extends StackPane {
             bar.maxWidthProperty().bind(barWidth);
             BorderPane.setMargin(bar, PROGRESS_BAR_MARGIN);
 
+            title.getStyleClass().add("task-stage-title");
+            message.getStyleClass().add("task-status-text");
+            percent.getStyleClass().add("task-status-percent");
+            left.getStyleClass().add("task-stage-icon");
+            pane.getStyleClass().add("task-stage-row");
+            bar.getStyleClass().add("task-progress-bar");
+
+            statusBox.setAlignment(Pos.CENTER_RIGHT);
+
             setGraphic(pane);
         }
 
         private void updateLeftIcon(StageNode.Status status) {
             left.getChildren().setAll(status.svg.createIcon(STATUS_ICON_SIZE));
+        }
+
+        private void updateStageStyle(StageNode.Status status) {
+            getStyleClass().removeAll(STAGE_STYLES);
+            getStyleClass().add(switch (status) {
+                case WAITING -> "stage-waiting";
+                case RUNNING -> "stage-running";
+                case SUCCESS -> "stage-success";
+                case FAILED -> "stage-failed";
+            });
+        }
+
+        private void clearStageStyle() {
+            getStyleClass().removeAll(STAGE_STYLES);
         }
 
         @Override
@@ -241,6 +357,7 @@ public final class TaskListPane extends StackPane {
             pane.paddingProperty().unbind();
             title.textProperty().unbind();
             message.textProperty().unbind();
+            percent.textProperty().unbind();
 
             bar.setSmoothProgress(false);
             bar.progressProperty().unbind();
@@ -249,22 +366,31 @@ public final class TaskListPane extends StackPane {
                 prevStageNode.status.removeListener(statusChangeListener);
 
             if (item instanceof ProgressListNode progressListNode) {
+                clearStageStyle();
                 title.setText(progressListNode.title);
                 message.textProperty().bind(progressListNode.message);
                 bar.progressProperty().bind(progressListNode.progress);
+                percent.textProperty().bind(Bindings.createStringBinding(() -> {
+                    double progress = progressListNode.progress.get();
+                    return progress < 0 ? "" : Math.round(progress * 100) + "%";
+                }, progressListNode.progress));
 
                 pane.paddingProperty().bind(progressNodePadding);
                 pane.setLeft(null);
-                pane.setRight(message);
+                statusBox.getChildren().setAll(percent, message);
+                pane.setRight(statusBox);
                 pane.setBottom(bar);
             } else if (item instanceof StageNode stageNode) {
+                clearStageStyle();
+                updateStageStyle(stageNode.status.get());
                 title.textProperty().bind(stageNode.title);
                 message.setText("");
                 bar.setProgress(ProgressIndicator.INDETERMINATE_PROGRESS);
 
                 pane.setPadding(Insets.EMPTY);
                 pane.setLeft(left);
-                pane.setRight(message);
+                statusBox.getChildren().setAll(message);
+                pane.setRight(statusBox);
                 pane.setBottom(null);
 
                 updateLeftIcon(stageNode.status.get());
@@ -273,6 +399,7 @@ public final class TaskListPane extends StackPane {
                 stageNode.status.addListener(statusChangeListener);
                 prevStageNodeRef = new WeakReference<>(stageNode);
             } else { // item == null
+                clearStageStyle();
                 title.setText("");
                 message.setText("");
                 bar.setProgress(ProgressIndicator.INDETERMINATE_PROGRESS);
@@ -310,6 +437,7 @@ public final class TaskListPane extends StackPane {
                 return;
             }
             cell.updateLeftIcon(newValue);
+            cell.updateStageStyle(newValue);
         }
     }
 

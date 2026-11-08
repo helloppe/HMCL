@@ -1,13 +1,28 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import org.jackhuang.hmcl.game.HMCLGameRepository;
-import org.jackhuang.hmcl.game.HMCLGameInstance;
 import org.jackhuang.hmcl.setting.GameSettings;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.animation.TransitionPane;
 import org.jackhuang.hmcl.ui.construct.*;
@@ -21,81 +36,65 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 public class LauncherSettingsPage extends DecoratorAnimatedPage implements DecoratorPage, PageAware {
     private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("settings")));
-    /// Manages tab selection and content transitions independently of the sidebar.
-    private final TabController tabController;
-    /// The tab for editing game settings presets.
-    private final TabItem<GameSettingsPage<GameSettings.Preset>> gameTab;
-    /// The tab whose content manages installed Java runtimes.
-    private final TabItem<JavaManagementPage> javaManagementTab;
-    /// The tab for general launcher settings.
-    private final TabItem<SettingsPage> settingsTab;
-    /// The tab for launcher appearance settings.
-    private final TabItem<PersonalizationPage> personalizationTab;
-    /// The tab for download settings.
-    private final TabItem<DownloadSettingsPage> downloadTab;
-    /// The tab displaying launcher help.
-    private final TabItem<HelpPage> helpTab;
-    /// The tab displaying launcher information.
-    private final TabItem<AboutPage> aboutTab;
-    /// The tab displaying feedback and contact information.
-    private final TabItem<FeedbackPage> feedbackTab;
+    private final TabHeader tab;
+    private final TabHeader.Tab<GameSettingsPage<GameSettings.Preset>> gameTab = new TabHeader.Tab<>("versionSettingsPage");
+    private final TabControl.Tab<JavaManagementPage> javaManagementTab = new TabControl.Tab<>("javaManagementPage");
+    private final TabHeader.Tab<SettingsPage> settingsTab = new TabHeader.Tab<>("settingsPage");
+    private final TabHeader.Tab<PersonalizationPage> personalizationTab = new TabHeader.Tab<>("personalizationPage");
+    private final TabHeader.Tab<DownloadSettingsPage> downloadTab = new TabHeader.Tab<>("downloadSettingsPage");
+    private final TabHeader.Tab<HelpPage> helpTab = new TabHeader.Tab<>("helpPage");
+    private final TabHeader.Tab<AboutPage> aboutTab = new TabHeader.Tab<>("aboutPage");
+    private final TabHeader.Tab<FeedbackPage> feedbackTab = new TabHeader.Tab<>("feedbackPage");
     private final TransitionPane transitionPane = new TransitionPane();
 
-    /// Creates the settings tabs and fills the shared navigation sidebar.
     public LauncherSettingsPage() {
-        gameTab = new TabItem<>(() -> new GameSettingsPage<>(GameSettings.Preset.class, null));
-        javaManagementTab = new TabItem<>(JavaManagementPage::new);
-        settingsTab = new TabItem<>(SettingsPage::new);
-        personalizationTab = new TabItem<>(PersonalizationPage::new);
-        downloadTab = new TabItem<>(DownloadSettingsPage::new);
-        helpTab = new TabItem<>(HelpPage::new);
-        feedbackTab = new TabItem<>(FeedbackPage::new);
-        aboutTab = new TabItem<>(AboutPage::new);
-        tabController = new TabController(transitionPane,
-                gameTab,
-                javaManagementTab,
-                settingsTab,
-                personalizationTab,
-                downloadTab,
-                helpTab,
-                feedbackTab,
-                aboutTab);
+        gameTab.setNodeSupplier(() -> new GameSettingsPage<>(GameSettings.Preset.class));
+        javaManagementTab.setNodeSupplier(JavaManagementPage::new);
+        settingsTab.setNodeSupplier(SettingsPage::new);
+        personalizationTab.setNodeSupplier(PersonalizationPage::new);
+        downloadTab.setNodeSupplier(DownloadSettingsPage::new);
+        helpTab.setNodeSupplier(HelpPage::new);
+        feedbackTab.setNodeSupplier(FeedbackPage::new);
+        aboutTab.setNodeSupplier(AboutPage::new);
+        tab = new TabHeader(transitionPane, gameTab, javaManagementTab, settingsTab, personalizationTab, downloadTab, helpTab, feedbackTab, aboutTab);
 
-        tabController.selectTab(gameTab);
-        addEventHandler(Navigator.NavigationEvent.NAVIGATED, event -> gameTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(GameDirectoryManager.getSelectedRepository())));
+        tab.select(gameTab);
+        addEventHandler(Navigator.NavigationEvent.NAVIGATED, event -> gameTab.getNode().loadInstance(GameDirectoryManager.getSelectedRepository(), null));
 
-        getSidebar()
-                .addNavigationDrawerTab(tabController, gameTab, i18n("settings.type.global.manage"), SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
-                .addNavigationDrawerTab(tabController, javaManagementTab, i18n("java.management"), SVG.LOCAL_CAFE, SVG.LOCAL_CAFE_FILL)
+        AdvancedListBox sideBar = new AdvancedListBox()
+                .addNavigationDrawerTab(tab, gameTab, i18n("settings.type.global.manage"), SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
+                .addNavigationDrawerTab(tab, javaManagementTab, i18n("java.management"), SVG.LOCAL_CAFE, SVG.LOCAL_CAFE_FILL)
                 .startCategory(i18n("launcher").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerTab(tabController, settingsTab, i18n("settings.launcher.general"), SVG.TUNE)
-                .addNavigationDrawerTab(tabController, personalizationTab, i18n("settings.launcher.appearance"), SVG.STYLE, SVG.STYLE_FILL)
-                .addNavigationDrawerTab(tabController, downloadTab, i18n("download"), SVG.DOWNLOAD)
+                .addNavigationDrawerTab(tab, settingsTab, i18n("settings.launcher.general"), SVG.TUNE)
+                .addNavigationDrawerTab(tab, personalizationTab, i18n("settings.launcher.appearance"), SVG.STYLE, SVG.STYLE_FILL)
+                .addNavigationDrawerTab(tab, downloadTab, i18n("download"), SVG.DOWNLOAD)
                 .startCategory(i18n("help").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerTab(tabController, helpTab, i18n("help"), SVG.HELP, SVG.HELP_FILL)
-                .addNavigationDrawerTab(tabController, feedbackTab, i18n("contact"), SVG.FEEDBACK, SVG.FEEDBACK_FILL)
-                .addNavigationDrawerTab(tabController, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
+                .addNavigationDrawerTab(tab, helpTab, i18n("help"), SVG.HELP, SVG.HELP_FILL)
+                .addNavigationDrawerTab(tab, feedbackTab, i18n("contact"), SVG.FEEDBACK, SVG.FEEDBACK_FILL)
+                .addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
+        FXUtils.setLimitWidth(sideBar, 200);
+        setLeft(sideBar);
 
-        setContent(transitionPane);
+        setCenter(transitionPane);
     }
 
     @Override
     public void onPageShown() {
-        tabController.onPageShown();
+        tab.onPageShown();
     }
 
     @Override
     public void onPageHidden() {
-        tabController.onPageHidden();
+        tab.onPageHidden();
     }
 
     public void showGameSettings(HMCLGameRepository repository) {
-        gameTab.getNode().loadInstance(HMCLGameInstance.Optional.empty(repository));
-        tabController.selectTab(gameTab, false);
+        gameTab.getNode().loadInstance(repository, null);
+        tab.select(gameTab, false);
     }
 
     public void showFeedback() {
-        tabController.selectTab(feedbackTab, false);
+        tab.select(feedbackTab, false);
     }
 
     @Override

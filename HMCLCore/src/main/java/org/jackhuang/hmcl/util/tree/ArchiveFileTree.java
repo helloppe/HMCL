@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2024 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2024 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util.tree;
 
 import kala.compress.archivers.ArchiveEntry;
@@ -38,6 +53,7 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
     }
 
     protected final R reader;
+    protected final Dir<E> root = new Dir<>("", "");
 
     public ArchiveFileTree(R reader) {
         this.reader = reader;
@@ -47,10 +63,11 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
         return reader;
     }
 
-    public abstract Dir<E> getRoot();
+    public Dir<E> getRoot() {
+        return root;
+    }
 
     public @Nullable E getEntry(@NotNull String entryPath) {
-        Dir<E> root = getRoot();
         Dir<E> dir = root;
         if (entryPath.indexOf('/') < 0) {
             return dir.getFiles().get(entryPath);
@@ -74,7 +91,7 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
     }
 
     public @Nullable Dir<E> getDirectory(@NotNull String dirPath) {
-        Dir<E> dir = getRoot();
+        Dir<E> dir = root;
         if (dirPath.isEmpty()) {
             return dir;
         }
@@ -89,66 +106,45 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
         return dir;
     }
 
-    /// Adds an entry, creating missing parent directories.
-    /// Empty and `.` directory components are skipped. Entries with `..` directory
-    /// components, duplicate files, and file/directory conflicts are skipped with a warning.
-    /// Parent directories created before a skipped entry is detected remain in the tree.
-    ///
-    /// @param entry the archive entry to add
-    protected static <E extends ArchiveEntry> void addEntry(Dir<E> root, @NotNull E entry) {
-        String name = entry.getName();
+    protected void addEntry(E entry) throws IOException {
+        String[] path = entry.getName().split("/");
+        List<String> pathList = Arrays.asList(path);
+
         Dir<E> dir = root;
 
-        int start = 0;
-        while (start < name.length()) {
-            int end = name.indexOf('/', start);
-            boolean isLastPart = end < 0 || end == name.length() - 1;
-            String item = end >= 0 ? name.substring(start, end) : name.substring(start);
-
-            // A final component may be skipped, so the cursor must still reach the end.
-            start = end < 0 ? name.length() : end + 1;
-
-            if (isLastPart && !entry.isDirectory()) {
-                if (dir.getSubDirs().containsKey(item)) {
-                    LOG.warning("A file and a directory have the same name: " + name);
-                    return;
-                }
-
-                if (dir.getFiles().containsKey(item)) {
-                    LOG.warning("Duplicate entry: " + entry.getName());
-                    return;
-                }
-
-                if (dir.files.isEmpty())
-                    dir.files = new HashMap<>();
-                dir.files.put(item, entry);
-                break;
-            }
-
-            if (item.equals(".") || item.isEmpty())
+        for (int i = 0, end = entry.isDirectory() ? path.length : path.length - 1; i < end; i++) {
+            String item = path[i];
+            if (item.equals("."))
                 continue;
-            if (item.equals("..")) {
-                LOG.warning("Invalid entry name: " + name);
-                return;
+            if (item.equals("..") || item.isEmpty())
+                throw new IOException("Invalid entry: " + entry.getName());
+
+            if (dir.files.containsKey(item)) {
+                throw new IOException("A file and a directory have the same name: " + entry.getName());
             }
 
-            if (dir.getFiles().containsKey(item)) {
-                LOG.warning("A file and a directory have the same name: " + name);
-                return;
+            final int nameEnd = i + 1;
+            dir = dir.subDirs.computeIfAbsent(item, name ->
+                    new Dir<>(name, String.join("/", pathList.subList(0, nameEnd))));
+        }
+
+        if (entry.isDirectory()) {
+            if (dir.entry == null)
+                dir.entry = entry;
+            else if (!dir.entry.isDirectory())
+                throw new IOException("A file and a directory have the same name: " + entry.getName());
+        } else {
+            String fileName = path[path.length - 1];
+
+            if (dir.subDirs.containsKey(fileName)) {
+                throw new IOException("A file and a directory have the same name: " + entry.getName());
             }
 
-            if (dir.subDirs.isEmpty())
-                dir.subDirs = new HashMap<>();
-
-            dir = dir.subDirs.computeIfAbsent(item, Dir::new);
-
-            if (isLastPart) {
-                if (dir.entry == null)
-                    dir.entry = entry;
-                else if (!dir.entry.isDirectory())
-                    LOG.warning("A file and a directory have the same name: " + entry.getName());
-                break;
+            if (dir.files.containsKey(fileName)) {
+                throw new IOException("Duplicate entry: " + entry.getName());
             }
+
+            dir.files.put(fileName, entry);
         }
     }
 
@@ -225,13 +221,15 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
 
     public static final class Dir<E extends ArchiveEntry> {
         private final String name;
+        private final String fullName;
         private E entry;
 
-        Map<String, Dir<E>> subDirs = Map.of();
-        Map<String, E> files = Map.of();
+        final Map<String, Dir<E>> subDirs = new HashMap<>();
+        final Map<String, E> files = new HashMap<>();
 
-        public Dir(String name) {
+        public Dir(String name, String fullName) {
             this.name = name;
+            this.fullName = fullName;
         }
 
         public boolean isRoot() {
@@ -240,6 +238,11 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
 
         public @NotNull String getName() {
             return name;
+        }
+
+        /// Get the normalized full path. Leading `/` and all `.` in the path will be removed.
+        public @NotNull String getFullName() {
+            return fullName;
         }
 
         public @Nullable E getEntry() {

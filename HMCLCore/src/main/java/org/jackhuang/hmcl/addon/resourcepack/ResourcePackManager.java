@@ -1,11 +1,25 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.addon.resourcepack;
 
 import com.google.gson.annotations.SerializedName;
-import kala.encdet.EncodingDetector;
+import org.jackhuang.hmcl.game.GameRepository;
 import org.jackhuang.hmcl.addon.LocalAddonManager;
-import org.jackhuang.hmcl.game.DefaultGameInstance;
 import org.jackhuang.hmcl.addon.meta.PackMcMeta;
 import org.jackhuang.hmcl.util.Pair;
 import org.jackhuang.hmcl.util.StringUtils;
@@ -22,8 +36,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
@@ -206,55 +218,39 @@ public final class ResourcePackManager extends LocalAddonManager<ResourcePackFil
 
     private boolean loaded = false;
 
-    /// Creates a resource-pack manager for the given instance.
-    ///
-    /// @param instance the snapshot member whose resource packs this manager operates on
-    public ResourcePackManager(DefaultGameInstance instance) {
-        super(instance);
-        this.resourcePackDirectory = instance.getResourcePackDirectory();
-        this.optionsFile = instance.getRunDirectory().resolve("options.txt");
+    public ResourcePackManager(GameRepository repository, String id) {
+        super(repository, id);
+        this.resourcePackDirectory = this.repository.getResourcePackDirectory(this.id);
+        this.optionsFile = repository.getRunDirectory(id).resolve("options.txt");
     }
-
-    private @Nullable Charset optionsFileEncoding;
 
     @NotNull
     private Map<String, String> loadOptions() {
         getMinecraftVersion();
         Map<String, String> options = new LinkedHashMap<>();
         if (!Files.isRegularFile(optionsFile)) return options;
-        byte[] bytes;
-        try {
-            bytes = Files.readAllBytes(optionsFile);
-        } catch (IOException | UncheckedIOException e) {
-            LOG.warning("Failed to read instance options file", e);
-            return options;
-        }
-
-        EncodingDetector.Encoding bestEncoding = EncodingDetector.MODERN_WEB.detect(bytes).bestEncoding();
-        if (bestEncoding == EncodingDetector.Encoding.ASCII)
-            bestEncoding = EncodingDetector.Encoding.UTF_8;
-
-        optionsFileEncoding = bestEncoding != null && bestEncoding.approximateCharset() != null
-                ? bestEncoding.approximateCharset() : StandardCharsets.UTF_8;
-        //noinspection DataFlowIssue
-        new String(bytes, optionsFileEncoding).lines().forEach(s -> {
-            if (StringUtils.isNotBlank(s)) {
-                var entry = s.split(":", 2);
-                if (entry.length == 2) {
-                    options.put(entry[0], entry[1]);
+        try (var stream = Files.lines(optionsFile, StandardCharsets.UTF_8)) {
+            stream.forEach(s -> {
+                if (StringUtils.isNotBlank(s)) {
+                    var entry = s.split(":", 2);
+                    if (entry.length == 2) {
+                        options.put(entry[0], entry[1]);
+                    }
                 }
-            }
-        });
+            });
+        } catch (IOException e) {
+            LOG.warning("Failed to read instance options file", e);
+        }
         return options;
     }
 
     private void saveOptions(@NotNull Map<String, String> options) {
-        StringBuilder sb = new StringBuilder();
-        for (var entry : options.entrySet()) {
-            sb.append(entry.getKey()).append(":").append(entry.getValue()).append(System.lineSeparator());
-        }
         try {
-            FileUtils.saveSafely(optionsFile, sb.toString(), optionsFileEncoding);
+            StringBuilder sb = new StringBuilder();
+            for (var entry : options.entrySet()) {
+                sb.append(entry.getKey()).append(":").append(entry.getValue()).append(System.lineSeparator());
+            }
+            FileUtils.saveSafely(optionsFile, sb.toString());
         } catch (IOException e) {
             LOG.warning("Failed to save instance options file", e);
         }
@@ -266,7 +262,7 @@ public final class ResourcePackManager extends LocalAddonManager<ResourcePackFil
             lock.lock();
             try {
                 if (minecraftVersion == null) {
-                    minecraftVersion = instance.getVersion();
+                    minecraftVersion = GameVersionNumber.asGameVersion(repository.getGameVersion(id));
                     supportsNewOptionsFormat = isMcVersionSupportsNewOptionsFormat(minecraftVersion);
                 }
             } finally {
@@ -281,8 +277,7 @@ public final class ResourcePackManager extends LocalAddonManager<ResourcePackFil
         if (requiredVersion == null) {
             lock.lock();
             try {
-                if (requiredVersion == null)
-                    requiredVersion = getPackVersion(getMinecraftVersion(), instance.getInstanceJarFile());
+                if (requiredVersion == null) requiredVersion = getPackVersion(getMinecraftVersion(), repository.getVersionJar(id));
             } finally {
                 lock.unlock();
             }
@@ -494,39 +489,6 @@ public final class ResourcePackManager extends LocalAddonManager<ResourcePackFil
         }
     }
 
-    public boolean rename(String oldName, String newName) {
-        if (newName.equals(oldName)) return false;
-
-        String oldNameNewFormat = "file/" + oldName;
-        String newNameNewFormat = "file/" + newName;
-        boolean modified = false;
-
-        lock.lock();
-        try {
-            Map<String, String> options = loadOptions();
-            List<String> optPacks = new ArrayList<>(deserializePackList(options.get("resourcePacks")));
-            List<String> optIncompatiblePacks = new ArrayList<>(deserializePackList(options.get("incompatibleResourcePacks")));
-            for (var l : List.of(optPacks, optIncompatiblePacks)) {
-                var it = l.listIterator();
-                while (it.hasNext()) {
-                    var next = it.next();
-                    if (oldName.equals(next) || oldNameNewFormat.equals(next)) {
-                        it.set(supportsNewOptionsFormat ? newNameNewFormat : newName);
-                        modified = true;
-                    }
-                }
-            }
-            if (modified) {
-                options.put("resourcePacks", serializePackList(optPacks));
-                options.put("incompatibleResourcePacks", serializePackList(optIncompatiblePacks));
-                saveOptions(options);
-            }
-            return modified;
-        } finally {
-            lock.unlock();
-        }
-    }
-
     public Stream<Pair<ResourcePackFile, Boolean>> arePacksEnabled(Stream<ResourcePackFile> resourcePacks) {
         lock.lock();
         try {
@@ -540,18 +502,18 @@ public final class ResourcePackManager extends LocalAddonManager<ResourcePackFil
     }
 
     public ResourcePackFile.Compatibility getCompatibility(@NotNull ResourcePackFile resourcePack) {
-        if (resourcePack.getPackInfo() == null)
+        if (resourcePack.getMeta() == null || resourcePack.getMeta().pack() == null)
             return ResourcePackFile.Compatibility.MISSING_PACK_META;
         if (this.getRequiredVersion().isUnspecified())
             return ResourcePackFile.Compatibility.MISSING_GAME_META;
         int requiredMajor = getRequiredVersion().majorVersion();
         VersionRange<PackMcMeta.PackVersion> versionRange;
         if (requiredMajor > 64)
-            versionRange = getResourcePackVersionRangeNew(resourcePack.getPackInfo());
+            versionRange = getResourcePackVersionRangeNew(resourcePack.getMeta().pack());
         else if (requiredMajor > 15)
-            versionRange = getResourcePackVersionRangeOld(resourcePack.getPackInfo());
+            versionRange = getResourcePackVersionRangeOld(resourcePack.getMeta().pack());
         else
-            versionRange = getResourcePackVersionRangeOldest(resourcePack.getPackInfo());
+            versionRange = getResourcePackVersionRangeOldest(resourcePack.getMeta().pack());
         if (versionRange.isEmpty())
             return ResourcePackFile.Compatibility.INVALID;
         if (versionRange.getMaximum().compareTo(this.getRequiredVersion()) < 0)

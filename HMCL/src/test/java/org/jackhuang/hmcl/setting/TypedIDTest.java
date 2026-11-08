@@ -1,11 +1,25 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.setting;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.jackhuang.hmcl.auth.AccountID;
-import org.jackhuang.hmcl.game.GameInstanceID;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -86,7 +100,7 @@ public final class TypedIDTest {
         GameDirectoryID id = GameDirectoryID.parse("game-directory:123e4567-e89b-12d3-a456-426614174000");
         LauncherSettings settings = new LauncherSettings();
 
-        settings.setSelectedInstance(id, new GameInstanceID("1.20.1"));
+        settings.setSelectedInstance(id, "1.20.1");
         JsonObject serialized = JsonParser.parseString(settings.toJson()).getAsJsonObject();
         LauncherSettings deserialized = Objects.requireNonNull(LauncherSettings.fromJson(serialized));
 
@@ -94,6 +108,6 @@ public final class TypedIDTest {
                 .getAsJsonObject(LauncherSettings.PROPERTY_SELECTED_INSTANCE)
                 .get(id.toString())
                 .getAsString());
-        assertEquals("1.20.1", deserialized.getSelectedInstance(id).toString());
+        assertEquals("1.20.1", deserialized.getSelectedInstance(id));
     }
 }

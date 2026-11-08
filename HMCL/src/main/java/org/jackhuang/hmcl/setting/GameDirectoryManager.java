@@ -1,18 +1,30 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.setting;
 
-import javafx.beans.property.ObjectProperty;
-import javafx.beans.property.ReadOnlyObjectProperty;
-import javafx.beans.property.ReadOnlyObjectWrapper;
-import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.*;
 import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import org.jackhuang.hmcl.Metadata;
-import org.jackhuang.hmcl.game.HMCLGameInstance;
+import org.jackhuang.hmcl.event.EventBus;
+import org.jackhuang.hmcl.event.RefreshedVersionsEvent;
 import org.jackhuang.hmcl.game.HMCLGameRepository;
-import org.jackhuang.hmcl.game.HMCLGameRepositorySnapshot;
 import org.jackhuang.hmcl.util.PortablePath;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.i18n.LocalizedText;
@@ -21,10 +33,17 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.UnknownNullability;
 import org.jetbrains.annotations.UnmodifiableView;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.*;
+import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// Manages the merged runtime view of local and user game directories.
@@ -121,17 +140,12 @@ public final class GameDirectoryManager {
     /// The selected game repository, or `null` before the fallback game directory is resolved.
     private static final ObjectProperty<@UnknownNullability HMCLGameRepository> selectedRepository = new SimpleObjectProperty<>(GameDirectoryManager.class, "selectedRepository");
 
-    /// The selected instance projected from the selected repository's current snapshot.
-    private static final ReadOnlyObjectWrapper<@Nullable HMCLGameInstance> selectedInstance =
-            new ReadOnlyObjectWrapper<>(GameDirectoryManager.class, "selectedInstance");
+    /// The selected instance ID projected from the selected repository.
+    private static final ReadOnlyStringWrapper selectedInstance = new ReadOnlyStringWrapper(GameDirectoryManager.class, "selectedInstance");
 
     /// Updates [#selectedInstance] when the selected repository changes its selected instance.
-    private static final ChangeListener<@Nullable HMCLGameInstance> selectedRepositoryInstanceListener =
+    private static final ChangeListener<String> selectedRepositoryInstanceListener =
             (observable, oldValue, newValue) -> selectedInstance.set(newValue);
-
-    /// Reacts when the selected repository publishes a new snapshot.
-    private static final ChangeListener<? super HMCLGameRepositorySnapshot> selectedRepositorySnapshotListener =
-            (observable, oldValue, newValue) -> onSelectedRepositorySnapshotChanged();
 
     /// Initializes game directory state from the stores loaded by [SettingsManager].
     ///
@@ -187,32 +201,25 @@ public final class GameDirectoryManager {
             @Nullable HMCLGameRepository oldRepository = selectedRepository.get();
             if (oldRepository != null) {
                 oldRepository.selectedInstanceProperty().removeListener(selectedRepositoryInstanceListener);
-                oldRepository.snapshotProperty().removeListener(selectedRepositorySnapshotListener);
             }
             HMCLGameRepository repository = getOrCreateRepository(newValue);
             selectedRepository.set(repository);
             selectedInstance.set(repository.getSelectedInstance());
             repository.selectedInstanceProperty().addListener(selectedRepositoryInstanceListener);
-            repository.snapshotProperty().addListener(selectedRepositorySnapshotListener);
-            if (repository.isLoaded()) {
-                onSelectedRepositorySnapshotChanged();
-            }
-            repository.refreshAsync().start();
+            repository.refreshVersionsAsync().start();
         });
         selectedGameDirectory.set(currentGameDirectory != null ? currentGameDirectory : mergedGameDirectories.get(0));
-    }
 
-    /// Restores selection and notifies consumers after the selected repository publishes a loaded snapshot.
-    private static void onSelectedRepositorySnapshotChanged() {
-        @Nullable HMCLGameRepository repository = selectedRepository.get();
-        if (repository == null || !repository.isLoaded()) {
-            return;
-        }
-
-        repository.refreshSelectedInstance();
-        for (Consumer<HMCLGameRepository> listener : versionsListeners) {
-            listener.accept(repository);
-        }
+        EventBus.EVENT_BUS.channel(RefreshedVersionsEvent.class).registerWeak(event -> {
+            runInFX(() -> {
+                @Nullable HMCLGameRepository repository = selectedRepository.get();
+                if (repository != null && repository == event.getSource()) {
+                    repository.refreshSelectedInstance();
+                    for (Consumer<HMCLGameRepository> listener : versionsListeners)
+                        listener.accept(repository);
+                }
+            });
+        });
     }
 
     /// Creates the built-in game directories only when no game directory exists.
@@ -315,7 +322,6 @@ public final class GameDirectoryManager {
         if (source == target) {
             gameDirectory.setName(name);
             gameDirectory.setPath(path);
-            rebuildGameDirectories();
             return;
         }
 
@@ -473,26 +479,17 @@ public final class GameDirectoryManager {
     }
 
     /// Returns the selected instance property projected from the selected repository.
-    ///
-    /// The value is `null` when the selected repository has no registered selected instance.
-    ///
-    /// @return the read-only selected-instance property
-    public static ReadOnlyObjectProperty<@Nullable HMCLGameInstance> selectedInstanceProperty() {
+    public static ReadOnlyStringProperty selectedInstanceProperty() {
         return selectedInstance.getReadOnlyProperty();
     }
 
-    /// Returns the selected instance from the selected repository's current snapshot.
-    ///
-    /// @return the selected instance, or `null` when none is registered
-    public static @Nullable HMCLGameInstance getSelectedInstance() {
+    /// Returns the selected instance ID for the selected repository.
+    public static @Nullable String getSelectedInstance() {
         return getSelectedRepository().getSelectedInstance();
     }
 
-    /// Sets the selected instance for the selected repository.
-    ///
-    /// @param instance the instance to select, or `null` to clear the selection
-    /// @throws IllegalArgumentException if `instance` belongs to another repository
-    public static void setSelectedInstance(@Nullable HMCLGameInstance instance) {
+    /// Sets the selected instance ID for the selected repository.
+    public static void setSelectedInstance(@Nullable String instance) {
         getSelectedRepository().setSelectedInstance(instance);
     }
 

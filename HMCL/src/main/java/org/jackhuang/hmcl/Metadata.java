@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl;
 
 import org.jackhuang.hmcl.util.StringUtils;
@@ -8,7 +23,6 @@ import org.jackhuang.hmcl.util.platform.Architecture;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumSet;
 
@@ -23,20 +37,15 @@ public final class Metadata {
     public static final String FULL_NAME = "Hello Minecraft! Launcher";
     public static final String VERSION = System.getProperty("hmcl.version.override", JarUtils.getAttribute("hmcl.version", "@develop@"));
 
-    /// Explicit Application User Model ID used for Windows taskbar grouping and pinning.
-    public static final String WINDOWS_APP_USER_MODEL_ID = "org.jackhuang.hmcl";
-
     public static final String TITLE = NAME + " " + VERSION;
-
-    /// Whether the build metadata identifies this launcher as an official build.
-    public static final boolean OFFICIAL_BUILD = Boolean.parseBoolean(JarUtils.getAttribute("hmcl.official", "false"));
+    public static final String FULL_TITLE = FULL_NAME + " v" + VERSION;
 
     public static final int MINIMUM_REQUIRED_JAVA_VERSION = 17;
     public static final int MINIMUM_SUPPORTED_JAVA_VERSION = 17;
     public static final int RECOMMENDED_JAVA_VERSION = 21;
 
     public static final String PUBLISH_URL = "https://hmcl.huangyuhui.net";
-    public static final String REPOSITORY_URL = "https://github.com/HMCL-dev/HMCL";
+    public static final String DOWNLOAD_URL = PUBLISH_URL + "/download";
     public static final String HMCL_UPDATE_URL = System.getProperty("hmcl.update_source.override", PUBLISH_URL + "/api/update_link");
     public static final String MANUAL_UPDATE_URL = "https://github.com/HMCL-dev/HMCL/releases";
 
@@ -121,32 +130,4 @@ public final class Metadata {
                 return null;
         }
     }
-
-    /// Directory under [HMCL_LOCAL_HOME] that holds a launcher-bundled modpack for automatic install.
-    public static final String BUNDLED_MODPACK_DIRECTORY_NAME = "modpack";
-
-    /// Returns the directory for a launcher-bundled modpack (`[HMCL_LOCAL_HOME]/modpack`).
-    public static Path getBundledModpackDirectory() {
-        return HMCL_LOCAL_HOME.resolve(BUNDLED_MODPACK_DIRECTORY_NAME);
-    }
-
-    /// Returns the bundled modpack package under [getBundledModpackDirectory], if present.
-    ///
-    /// Prefers `modpack.zip` over `modpack.mrpack` when both exist. Presence of the package is the
-    /// signal to offer automatic install; the file is removed after a successful install.
-    ///
-    /// @return the modpack path, or `null` when no package is present
-    public static @Nullable Path findBundledModpackFile() {
-        Path directory = getBundledModpackDirectory();
-        Path zipModpack = directory.resolve("modpack.zip");
-        if (Files.isRegularFile(zipModpack)) {
-            return zipModpack;
-        }
-        Path mrpackModpack = directory.resolve("modpack.mrpack");
-        if (Files.isRegularFile(mrpackModpack)) {
-            return mrpackModpack;
-        }
-        return null;
-    }
-
 }

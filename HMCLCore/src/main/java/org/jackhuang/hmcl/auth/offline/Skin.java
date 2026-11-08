@@ -1,16 +1,30 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.auth.offline;
 
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import javafx.scene.image.Image;
-import org.glavo.url.WebURL;
 import org.jackhuang.hmcl.auth.yggdrasil.TextureModel;
-import org.jackhuang.hmcl.download.DownloadCandidates;
 import org.jackhuang.hmcl.task.FetchTask;
 import org.jackhuang.hmcl.task.GetTask;
 import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
@@ -24,8 +38,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
 
 public record Skin(Type type, String cslApi, TextureModel textureModel, String localSkinPath, String localCapePath) {
@@ -106,8 +120,8 @@ public record Skin(Type type, String cslApi, TextureModel textureModel, String l
             case CUSTOM_SKIN_LOADER_API:
                 String realCslApi = type == Type.LITTLE_SKIN
                         ? "https://littleskin.cn/csl"
-                        : NetworkUtils.addHttpsIfMissing(StringUtils.removeSuffix(Objects.requireNonNullElse(cslApi, ""), "/"));
-                return Task.composeAsync(() -> new GetTask(WebURL.parse("%s/%s.json".formatted(realCslApi, username))))
+                        : NetworkUtils.addHttpsIfMissing(StringUtils.removeSuffix(Lang.requireNonNullElse(cslApi, ""), "/"));
+                return Task.composeAsync(() -> new GetTask(String.format("%s/%s.json", realCslApi, username)))
                         .thenComposeAsync(json -> {
                             SkinJson result = JsonUtils.GSON.fromJson(json, SkinJson.class);
 
@@ -171,8 +185,8 @@ public record Skin(Type type, String cslApi, TextureModel textureModel, String l
 
     private static class FetchBytesTask extends FetchTask<InputStream> {
 
-        public FetchBytesTask(String url) {
-            super(DownloadCandidates.of(url));
+        public FetchBytesTask(String uri) {
+            super(List.of(NetworkUtils.toURI(uri)));
         }
 
         @Override

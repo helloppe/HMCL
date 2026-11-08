@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.download;
 
 import com.jfoenix.controls.JFXButton;
@@ -7,7 +22,6 @@ import com.jfoenix.controls.JFXTextField;
 import javafx.beans.property.StringProperty;
 import javafx.geometry.Pos;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.game.HMCLGameRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
@@ -35,7 +49,6 @@ public abstract class ModpackPage extends SpinnerPane implements WizardPage {
     protected final JFXTextField txtModpackName;
     protected final JFXButton btnInstall;
     protected final JFXButton btnDescription;
-    protected final JFXButton btnOptionalFiles;
 
     protected ModpackPage(WizardController controller) {
         this.controller = controller;
@@ -49,10 +62,12 @@ public abstract class ModpackPage extends SpinnerPane implements WizardPage {
             var archiveNamePane = new LinePane();
             {
                 FXUtils.setLimitHeight(archiveNamePane, 75);
-                archiveNamePane.setTitle(i18n("instance.name"));
+
+                archiveNamePane.setTitle(i18n("version.name"));
 
                 txtModpackName = new JFXTextField();
                 txtModpackName.setPrefWidth(300);
+                // BorderPane.setMargin(txtModpackName, new Insets(0, 0, 8, 32));
                 BorderPane.setAlignment(txtModpackName, Pos.CENTER_RIGHT);
                 archiveNamePane.setRight(txtModpackName);
             }
@@ -81,19 +96,10 @@ public abstract class ModpackPage extends SpinnerPane implements WizardPage {
                 btnDescription.setOnAction(e -> onDescribe());
                 descriptionPane.setLeft(btnDescription);
 
-                var installHBox = new HBox(8);
-                btnOptionalFiles = FXUtils.newRaisedButton(i18n("modpack.optional_files"));
-                btnOptionalFiles.setVisible(false);
-                btnOptionalFiles.setManaged(false);
-                installHBox.getChildren().add(btnOptionalFiles);
-
                 btnInstall = FXUtils.newRaisedButton(i18n("button.install"));
                 btnInstall.setOnAction(e -> onInstall());
-                var nameInvalid = createBooleanBinding(() -> !txtModpackName.validate(), txtModpackName.textProperty());
-                btnInstall.disableProperty().bind(nameInvalid);
-                btnOptionalFiles.disableProperty().bind(nameInvalid);
-                installHBox.getChildren().add(btnInstall);
-                descriptionPane.setRight(installHBox);
+                btnInstall.disableProperty().bind(createBooleanBinding(() -> !txtModpackName.validate(), txtModpackName.textProperty()));
+                descriptionPane.setRight(btnInstall);
             }
 
             componentList.getContent().setAll(

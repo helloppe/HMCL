@@ -1,32 +1,49 @@
-// SPDX-FileCopyrightText: Copyright (C) 2025 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2025 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.schematic;
 
-import org.glavo.nbt.tag.CompoundTag;
-import org.glavo.nbt.tag.IntArrayTag;
-import org.glavo.nbt.tag.IntTag;
-import org.glavo.nbt.tag.Tag;
-import org.jackhuang.hmcl.util.Point3I;
-import org.jackhuang.hmcl.util.StringUtils;
+import javafx.geometry.Point3D;
+import org.glavo.nbt.io.NBTCodec;
+import org.glavo.nbt.tag.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.OptionalInt;
-import java.util.OptionalLong;
+import java.util.zip.GZIPInputStream;
 
-import static org.jackhuang.hmcl.util.NBTUtils.*;
+/// @author Glavo
+/// @see <a href="https://litemapy.readthedocs.io/en/v0.9.0b0/litematics.html">The Litematic file format</a>
+public final class LitematicFile {
 
-/**
- * @author Glavo
- * @see <a href="https://litemapy.readthedocs.io/en/v0.9.0b0/litematics.html">The Litematic file format</a>
- */
-public final class LitematicFile extends Schematic {
+    private static @Nullable String tryGetString(Tag tag) {
+        return tag instanceof StringTag stringTag ? stringTag.get() : null;
+    }
 
     public static LitematicFile load(Path file) throws IOException {
 
-        CompoundTag root = readCompressed(file);
+        CompoundTag root;
+        try (InputStream in = new GZIPInputStream(Files.newInputStream(file))) {
+            root = NBTCodec.of().readTag(in, TagType.COMPOUND);
+        }
 
         Tag versionTag = root.get("Version");
         if (versionTag == null)
@@ -44,29 +61,19 @@ public final class LitematicFile extends Schematic {
         if (root.get("Regions") instanceof CompoundTag regionsTag)
             regions = regionsTag.size();
 
-        Point3I enclosingSize = null;
-        Tag enclosingSizeTag = ((CompoundTag) metadataTag).get("EnclosingSize");
-        if (enclosingSizeTag instanceof CompoundTag) {
-            CompoundTag list = (CompoundTag) enclosingSizeTag;
-            int x = tryGetInt(list.get("x")).orElse(0);
-            int y = tryGetInt(list.get("y")).orElse(0);
-            int z = tryGetInt(list.get("z")).orElse(0);
-
-            if (x > 0 && y > 0 && z > 0) enclosingSize = new Point3I(x, y, z);
-        }
-
-        Tag subVersionTag = root.get("SubVersion");
         return new LitematicFile(file, (CompoundTag) metadataTag,
-                ((IntTag) versionTag).get(),
-                tryGetInt(subVersionTag).orElse(-1),
-                tryGetInt(root.get("MinecraftDataVersion")).orElse(0),
-                regions,
-                enclosingSize
+                ((IntTag) versionTag).getValue(),
+                root.getIntOrZero("SubVersion"),
+                root.getIntOrZero("MinecraftDataVersion"),
+                regions
         );
     }
 
+    private final @NotNull Path file;
+
     private final int version;
     private final int subVersion;
+    private final int minecraftDataVersion;
     private final int regionCount;
     private final int[] previewImageData;
     private final String name;
@@ -76,12 +83,14 @@ public final class LitematicFile extends Schematic {
     private final Instant timeModified;
     private final int totalBlocks;
     private final int totalVolume;
+    private final Point3D enclosingSize;
 
     private LitematicFile(@NotNull Path file, @NotNull CompoundTag metadata,
-                          int version, int subVersion, int minecraftDataVersion, int regionCount, Point3I enclosingSize) {
-        super(file, minecraftDataVersion, enclosingSize);
+                          int version, int subVersion, int minecraftDataVersion, int regionCount) {
+        this.file = file;
         this.version = version;
         this.subVersion = subVersion;
+        this.minecraftDataVersion = minecraftDataVersion;
         this.regionCount = regionCount;
 
         Tag previewImageData = metadata.get("PreviewImageData");
@@ -92,39 +101,48 @@ public final class LitematicFile extends Schematic {
         this.name = tryGetString(metadata.get("Name"));
         this.author = tryGetString(metadata.get("Author"));
         this.description = tryGetString(metadata.get("Description"));
-        this.timeCreated = tryGetLongTimestamp(metadata.get("TimeCreated"));
-        this.timeModified = tryGetLongTimestamp(metadata.get("TimeModified"));
-        this.totalBlocks = tryGetInt(metadata.get("TotalBlocks")).orElse(-1);
-        this.totalVolume = tryGetInt(metadata.get("TotalVolume")).orElse(-1);
+        this.timeCreated = metadata.get("TimeCreated") instanceof LongTag time ? Instant.ofEpochMilli(time.getValue()) : null;
+        this.timeModified = metadata.get("TimeModified") instanceof LongTag time ? Instant.ofEpochMilli(time.getValue()) : null;
+        this.totalBlocks = metadata.getIntOrZero("TotalBlocks");
+        this.totalVolume = metadata.getIntOrZero("TotalVolume");
+
+        Point3D enclosingSize = null;
+        if (metadata.get("EnclosingSize") instanceof CompoundTag list) {
+            int x = list.getIntOrZero("x");
+            int y = list.getIntOrZero("y");
+            int z = list.getIntOrZero("z");
+
+            if (x >= 0 && y >= 0 && z >= 0)
+                enclosingSize = new Point3D(x, y, z);
+        }
+        this.enclosingSize = enclosingSize;
 
     }
 
-    @Override
-    public SchematicType getType() {
-        return SchematicType.LITEMATIC;
+    public @NotNull Path getFile() {
+        return file;
     }
 
-    @Override
-    public OptionalInt getVersion() {
-        return OptionalInt.of(version);
+    public int getVersion() {
+        return version;
     }
 
-    @Override
-    public OptionalInt getSubVersion() {
-        return subVersion >= 0 ? OptionalInt.of(subVersion) : OptionalInt.empty();
+    public int getSubVersion() {
+        return subVersion;
     }
 
-    @Override
+    public int getMinecraftDataVersion() {
+        return minecraftDataVersion;
+    }
+
     public int[] getPreviewImageData() {
         return previewImageData != null ? previewImageData.clone() : null;
     }
 
-    @Override
-    public @NotNull String getName() {
-        return StringUtils.isNotBlank(name) ? name : super.getName();
+    public String getName() {
+        return name;
     }
 
-    @Override
     public String getAuthor() {
         return author;
     }
@@ -133,29 +151,27 @@ public final class LitematicFile extends Schematic {
         return description;
     }
 
-    @Override
     public Instant getTimeCreated() {
         return timeCreated;
     }
 
-    @Override
     public Instant getTimeModified() {
         return timeModified;
     }
 
-    @Override
-    public OptionalInt getTotalBlocks() {
-        return totalBlocks >= 1 ? OptionalInt.of(totalBlocks) : OptionalInt.empty();
+    public int getTotalBlocks() {
+        return totalBlocks;
     }
 
-    @Override
-    public OptionalLong getTotalVolume() {
-        return totalVolume >= 1 ? OptionalLong.of(totalVolume) : OptionalLong.empty();
+    public int getTotalVolume() {
+        return totalVolume;
     }
 
-    @Override
-    public OptionalInt getRegionCount() {
-        return regionCount >= 1 ? OptionalInt.of(regionCount) : OptionalInt.empty();
+    public Point3D getEnclosingSize() {
+        return enclosingSize;
     }
 
+    public int getRegionCount() {
+        return regionCount;
+    }
 }

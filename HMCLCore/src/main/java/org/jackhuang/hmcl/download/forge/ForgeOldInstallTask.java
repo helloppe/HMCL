@@ -1,19 +1,31 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.download.forge;
 
 import org.jackhuang.hmcl.download.ArtifactMalformedException;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.GameComponentType;
-import org.jackhuang.hmcl.game.GameInstanceManifest;
-import org.jackhuang.hmcl.game.GameInstancePatch;
-import org.jackhuang.hmcl.game.GameRepository;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
 import org.jackhuang.hmcl.game.Library;
+import org.jackhuang.hmcl.game.Version;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -23,17 +35,17 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
-public class ForgeOldInstallTask extends Task<GameInstancePatch> {
+public class ForgeOldInstallTask extends Task<Version> {
 
     private final DefaultDependencyManager dependencyManager;
-    private final GameInstanceManifest manifest;
+    private final Version version;
     private final Path installer;
     private final String selfVersion;
     private final List<Task<?>> dependencies = new ArrayList<>(1);
 
-    ForgeOldInstallTask(DefaultDependencyManager dependencyManager, GameInstanceManifest manifest, String selfVersion, Path installer) {
+    ForgeOldInstallTask(DefaultDependencyManager dependencyManager, Version version, String selfVersion, Path installer) {
         this.dependencyManager = dependencyManager;
-        this.manifest = manifest;
+        this.version = version;
         this.installer = installer;
         this.selfVersion = selfVersion;
 
@@ -59,23 +71,21 @@ public class ForgeOldInstallTask extends Task<GameInstancePatch> {
             ForgeInstallProfile installProfile = JsonUtils.fromNonNullJsonFully(stream, ForgeInstallProfile.class);
 
             // unpack the universal jar in the installer file.
-            Library forgeLibrary = new Library(installProfile.install().getPath());
-            GameRepository gameRepository = dependencyManager.getGameRepository();
-            Path forgeFile = gameRepository.getLayout().getLibraryFile(manifest.id(), forgeLibrary);
+            Library forgeLibrary = new Library(installProfile.getInstall().getPath());
+            Path forgeFile = dependencyManager.getGameRepository().getLibraryFile(version, forgeLibrary);
             Files.createDirectories(forgeFile.getParent());
 
-            ZipEntry forgeEntry = zipFile.getEntry(installProfile.install().getFilePath());
+            ZipEntry forgeEntry = zipFile.getEntry(installProfile.getInstall().getFilePath());
             try (InputStream is = zipFile.getInputStream(forgeEntry);
                  OutputStream os = Files.newOutputStream(forgeFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
                 is.transferTo(os);
             }
 
-            setResult(GameInstancePatch.fromManifest(
-                    installProfile.versionInfo(),
-                    GameComponentType.FORGE.getPatchId(),
-                    selfVersion,
-                    GameInstancePatch.PRIORITY_LOADER));
-            dependencies.add(dependencyManager.checkComponentCompletionAsync(installProfile.versionInfo(), true));
+            setResult(installProfile.getVersionInfo()
+                    .setPriority(Version.PRIORITY_LOADER)
+                    .setId(LibraryAnalyzer.LibraryType.FORGE.getPatchId())
+                    .setVersion(selfVersion));
+            dependencies.add(dependencyManager.checkLibraryCompletionAsync(installProfile.getVersionInfo(), true));
         } catch (ZipException ex) {
             throw new ArtifactMalformedException("Malformed forge installer file", ex);
         }

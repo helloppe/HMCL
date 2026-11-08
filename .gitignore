@@ -4,8 +4,6 @@
 hs_err_pid*
 *.hprof
 
-*.jfr
-
 .gradle
 gradle.properties
 
@@ -19,7 +17,6 @@ NVIDIA
 minecraft-exported-crash-info*
 hmcl-exported-logs-*
 terracotta-log-*
-hmcl-mod-update-list-*
 *.hmcl-theme
 /.java/
 /.local/

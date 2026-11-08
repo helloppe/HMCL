@@ -1,19 +1,34 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.terracotta;
 
 import com.google.gson.JsonParseException;
-import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.util.RegionUtils;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.gson.JsonSerializable;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.gson.TolerableValidationException;
 import org.jackhuang.hmcl.util.gson.Validation;
+import org.jackhuang.hmcl.util.i18n.LocaleUtils;
 import org.jackhuang.hmcl.util.io.HttpRequest;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -28,19 +43,17 @@ public final class TerracottaNodeList {
         public void validate() throws JsonParseException, TolerableValidationException {
             Validation.requireNonNull(url, "TerracottaNode.url cannot be null");
             try {
-                WebURL.parse(url);
-            } catch (IllegalArgumentException e) {
+                new URI(url);
+            } catch (URISyntaxException e) {
                 throw new JsonParseException("Invalid URL: " + url, e);
             }
         }
     }
 
-    /// Cached node URLs, or `null` before the first fetch completes.
-    private static volatile @Nullable @Unmodifiable List<WebURL> list;
+    private static volatile List<URI> list;
 
-    /// Returns the cached unmodifiable node URLs, fetching once and caching an empty list on failure.
-    public static @Unmodifiable List<WebURL> fetch() {
-        @Nullable @Unmodifiable List<WebURL> list = TerracottaNodeList.list;
+    public static List<URI> fetch() {
+        List<URI> list = TerracottaNodeList.list;
         if (list != null)
             return list;
 
@@ -69,9 +82,9 @@ public final class TerracottaNodeList {
                                     return false;
                                 }
 
-                                return StringUtils.isBlank(node.region) || node.region.equalsIgnoreCase(RegionUtils.MACHINE_REGION);
+                                return StringUtils.isBlank(node.region) || LocaleUtils.IS_CHINA_MAINLAND == "CN".equalsIgnoreCase(node.region);
                             })
-                            .map(it -> WebURL.parse(it.url()))
+                            .map(it -> URI.create(it.url()))
                             .toList();
                     LOG.info("Terracotta node list: " + list);
                 }

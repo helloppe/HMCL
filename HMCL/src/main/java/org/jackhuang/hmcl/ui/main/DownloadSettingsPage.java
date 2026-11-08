@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import com.jfoenix.controls.*;
@@ -16,12 +31,9 @@ import org.jackhuang.hmcl.setting.DownloadSource;
 import org.jackhuang.hmcl.setting.EnumCommonDirectory;
 import org.jackhuang.hmcl.setting.ProxyType;
 import org.jackhuang.hmcl.task.FetchTask;
-import org.jackhuang.hmcl.task.Schedulers;
-import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.WeakListenerHolder;
 import org.jackhuang.hmcl.ui.construct.*;
-import org.jackhuang.hmcl.util.FXThread;
 import org.jackhuang.hmcl.util.Holder;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.io.FileUtils;
@@ -50,8 +62,8 @@ public class DownloadSettingsPage extends StackPane {
         getChildren().setAll(scrollPane);
 
         {
-            var gameContent = new ComponentList();
-            gameContent.getStyleClass().add("card-non-transparent");
+            var downloadSource = new ComponentList();
+            downloadSource.getStyleClass().add("card-non-transparent");
             {
                 Function<DownloadSource, String> converter = source -> switch (source) {
                     case DEFAULT -> i18n("settings.launcher.download_source.auto");
@@ -87,10 +99,10 @@ public class DownloadSettingsPage extends StackPane {
                 defaultAddonSourcePane.setItems("modrinth", "curseforge");
                 defaultAddonSourcePane.valueProperty().bindBidirectional(settings().defaultAddonSourceProperty());
 
-                gameContent.getContent().setAll(versionListSourcePane, downloadSourcePane, defaultAddonSourcePane);
+                downloadSource.getContent().setAll(versionListSourcePane, downloadSourcePane, defaultAddonSourcePane);
             }
 
-            content.getChildren().addAll(ComponentList.createComponentListTitle(i18n("settings.launcher.game_content")), gameContent);
+            content.getChildren().addAll(ComponentList.createComponentListTitle(i18n("settings.launcher.download_source")), downloadSource);
         }
 
         {
@@ -116,7 +128,7 @@ public class DownloadSettingsPage extends StackPane {
                             settings().commonDirectoryProperty(), settings().commonDirectoryTypeProperty()));
 
             JFXButton cleanButton = FXUtils.newBorderButton(i18n("launcher.cache_directory.clean"));
-            cleanButton.setOnAction(e -> clearCacheDirectory(cleanButton));
+            cleanButton.setOnAction(e -> clearCacheDirectory());
             fileCommonLocationSublist.setHeaderRight(cleanButton);
 
             ComponentSublist downloadThreadsSublist = new ComponentSublist(() -> {
@@ -336,27 +348,10 @@ public class DownloadSettingsPage extends StackPane {
 
     }
 
-    @FXThread
-    private boolean cleaningCache = false;
-
-    private void clearCacheDirectory(JFXButton cleanButton) {
-        if (cleaningCache) return;
+    private void clearCacheDirectory() {
         String commonDirectory = settings().getResolvedCommonDirectory();
         if (commonDirectory != null) {
-            cleaningCache = true;
-            cleanButton.setMinWidth(cleanButton.getWidth());
-            var txt = cleanButton.getText();
-            cleanButton.setText("");
-            var spinner = new JFXSpinner();
-            spinner.setRadius(8);
-            cleanButton.setGraphic(spinner);
-            Task.runAsync("Clear Cache Directory", Schedulers.io(), () -> FileUtils.cleanDirectoryQuietly(Path.of(commonDirectory, "cache")))
-                    .whenComplete(Schedulers.javafx(), ignored -> {
-                        cleanButton.setGraphic(null);
-                        cleanButton.setText(txt);
-                        cleaningCache = false;
-                    }).setSignificance(Task.TaskSignificance.MINOR)
-                    .start();
+            FileUtils.cleanDirectoryQuietly(Path.of(commonDirectory, "cache"));
         }
     }
 }

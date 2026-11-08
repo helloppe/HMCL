@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.setting;
 
 import com.google.gson.JsonDeserializationContext;
@@ -67,7 +82,7 @@ public sealed abstract class GameSettings extends ObservableSetting {
     public static final class Instance extends GameSettings implements JsonSchemaSetting {
         /// The JSON schema supported by instance-specific game settings.
         public static final JsonSchema CURRENT_SCHEMA =
-                new JsonSchema("instance-game-settings", new JsonSchema.Version(1, 0, 1));
+                new JsonSchema("instance-game-settings", new JsonSchema.Version(1, 0, 0));
 
         /// Creates an empty instance setting.
         public Instance() {
@@ -137,10 +152,10 @@ public sealed abstract class GameSettings extends ObservableSetting {
 
         /// The icon of the instance.
         @SerializedName("icon")
-        private final SettingProperty<GameInstanceIconType> icon = newSettingProperty("icon", GameInstanceIconType.DEFAULT);
+        private final SettingProperty<VersionIconType> icon = newSettingProperty("icon", VersionIconType.DEFAULT);
 
         /// Returns the instance icon property.
-        public SettingProperty<GameInstanceIconType> iconProperty() {
+        public SettingProperty<VersionIconType> iconProperty() {
             return icon;
         }
 
@@ -371,19 +386,6 @@ public sealed abstract class GameSettings extends ObservableSetting {
     /// Returns the detected Java runtime reference property.
     public InheritableProperty<DetectedJava> detectedJavaProperty() {
         return detectedJava;
-    }
-
-    /// Property name for disabling automatic replacement with `javaw.exe` on Windows.
-    public static final String PROPERTY_NOT_USE_JAVAW = "notUseJavaw";
-
-    /// Whether to keep the selected Java executable instead of replacing it with `javaw.exe`; defaults to `false`.
-    @SerializedName(PROPERTY_NOT_USE_JAVAW)
-    private final InheritableProperty<Boolean> notUseJavaw = newInheritableProperty(PROPERTY_NOT_USE_JAVAW, false);
-
-    /// Returns the property disabling automatic replacement of a Windows Java executable with a sibling `javaw.exe` file.
-    /// If `true`, the selected executable is used unchanged. This property has no effect on other runtime platforms.
-    public InheritableProperty<Boolean> notUseJavawProperty() {
-        return notUseJavaw;
     }
 
     /// Property name for customized JVM options.
@@ -641,19 +643,6 @@ public sealed abstract class GameSettings extends ObservableSetting {
         return vulkanRenderer;
     }
 
-    /// Property name for high performance GPU preference.
-    public static final String PROPERTY_HIGH_PERFORMANCE = "highPerformance";
-
-    /// Whether to launch games with high-performance GPU.
-    @SerializedName(PROPERTY_HIGH_PERFORMANCE)
-    private final InheritableProperty<Boolean> highPerformance =
-            newInheritableProperty(PROPERTY_HIGH_PERFORMANCE, false);
-
-    /// Returns the high performance GPU preference property.
-    public InheritableProperty<Boolean> highPerformanceProperty() {
-        return highPerformance;
-    }
-
     /// Property name for customized environment variables.
     public static final String PROPERTY_ENVIRONMENT_VARIABLES = "environmentVariables";
 
@@ -811,15 +800,15 @@ public sealed abstract class GameSettings extends ObservableSetting {
     }
 
     /// Property name for using native GLFW.
-    public static final String PROPERTY_USE_NATIVE_GLFW_OR_SDL = "useNativeGLFW";
+    public static final String PROPERTY_USE_NATIVE_GLFW = "useNativeGLFW";
 
     /// If `true`, HMCL will use native GLFW.
-    @SerializedName(PROPERTY_USE_NATIVE_GLFW_OR_SDL)
-    private final InheritableProperty<Boolean> useNativeGLFWorSDL = newInheritableProperty(PROPERTY_USE_NATIVE_GLFW_OR_SDL, false);
+    @SerializedName(PROPERTY_USE_NATIVE_GLFW)
+    private final InheritableProperty<Boolean> useNativeGLFW = newInheritableProperty(PROPERTY_USE_NATIVE_GLFW, false);
 
     /// Returns the native GLFW property.
-    public InheritableProperty<Boolean> useNativeGLFWorSDLProperty() {
-        return useNativeGLFWorSDL;
+    public InheritableProperty<Boolean> useNativeGLFWProperty() {
+        return useNativeGLFW;
     }
 
     /// Property name for using native OpenAL.
@@ -927,11 +916,11 @@ public sealed abstract class GameSettings extends ObservableSetting {
         }
 
         /// Finds the effective Java runtime.
-        public @Nullable JavaRuntime getJava(@Nullable GameVersionNumber gameVersion, @Nullable GameInstanceManifest manifest) throws InterruptedException {
+        public @Nullable JavaRuntime getJava(@Nullable GameVersionNumber gameVersion, @Nullable Version version) throws InterruptedException {
             JavaVersionType javaVersionType = getInheritable(GameSettings::javaTypeProperty);
             switch (javaVersionType) {
                 case AUTO:
-                    return JavaManager.findSuitableJava(gameVersion, manifest);
+                    return JavaManager.findSuitableJava(gameVersion, version);
                 case CUSTOM:
                     try {
                         return JavaManager.getJava(Path.of(getInheritable(GameSettings::customJavaPathProperty)));
@@ -941,7 +930,7 @@ public sealed abstract class GameSettings extends ObservableSetting {
                 case VERSION: {
                     String javaVersion = getInheritable(GameSettings::customJavaVersionProperty);
                     if (StringUtils.isBlank(javaVersion)) {
-                        return JavaManager.findSuitableJava(gameVersion, manifest);
+                        return JavaManager.findSuitableJava(gameVersion, version);
                     }
 
                     int majorVersion = -1;
@@ -959,13 +948,13 @@ public sealed abstract class GameSettings extends ObservableSetting {
                     Collection<JavaRuntime> allJava = JavaManager.getAllJava().stream()
                             .filter(it -> it.getParsedVersion() == finalMajorVersion)
                             .collect(Collectors.toList());
-                    return JavaManager.findSuitableJava(allJava, gameVersion, manifest);
+                    return JavaManager.findSuitableJava(allJava, gameVersion, version);
                 }
                 case DETECTED: {
                     DetectedJava detectedJava = getInheritable(GameSettings::detectedJavaProperty);
                     String javaVersion = detectedJava.version();
                     if (StringUtils.isBlank(javaVersion)) {
-                        return JavaManager.findSuitableJava(gameVersion, manifest);
+                        return JavaManager.findSuitableJava(gameVersion, version);
                     }
 
                     if (StringUtils.isNotBlank(detectedJava.pathHash())) {

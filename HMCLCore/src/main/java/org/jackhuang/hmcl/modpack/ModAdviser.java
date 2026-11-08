@@ -1,6 +1,23 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack;
+
+import org.jackhuang.hmcl.util.Lang;
 
 import java.util.List;
 
@@ -23,7 +40,7 @@ public interface ModAdviser {
         HIDDEN
     }
 
-    List<String> MODPACK_BLACK_LIST = List.of(
+    List<String> MODPACK_BLACK_LIST = Lang.immutableListOf(
         "regex:(.*?)\\.log",
         "regex:.*\\.dat_old$", "regex:.*\\.old$", // Backup files
         "regex:.*\\.BakaCoreInfo$", // BakaXL
@@ -44,17 +61,17 @@ public interface ModAdviser {
         "irisUpdateInfo.json", // Iris
         "modernfix", // ModernFix
         "modtranslations", // Mod translations
+        "schematics", // Schematics mod
         "journeymap/data", // JourneyMap
         "mods/.connector" // Sinytra Connector
     );
 
-    List<String> MODPACK_SUGGESTED_BLACK_LIST = List.of(
+    List<String> MODPACK_SUGGESTED_BLACK_LIST = Lang.immutableListOf(
             "fonts", // BetterFonts
             "saves", "servers.dat", "options.txt", // Minecraft
             "blueprints" /* BuildCraft */,
             "optionsof.txt" /* OptiFine */,
             "journeymap" /* JourneyMap */,
-            "schematics" /* Schematics mod */,
             "optionsshaders.txt",
             "mods/VoxelMods");
 

@@ -1,19 +1,25 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.auth.authlibinjector;
 
-import com.google.gson.*;
-import com.google.gson.annotations.JsonAdapter;
-import javafx.application.Platform;
-import javafx.beans.InvalidationListener;
-import javafx.beans.Observable;
-import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.auth.yggdrasil.YggdrasilService;
-import org.jackhuang.hmcl.util.io.HttpRequest;
-import org.jackhuang.hmcl.util.io.NetworkUtils;
-import org.jackhuang.hmcl.util.javafx.ObservableHelper;
-import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
+import static java.util.Collections.emptyMap;
+import static org.jackhuang.hmcl.util.Lang.tryCast;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
@@ -22,9 +28,27 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-import static java.util.Collections.emptyMap;
-import static org.jackhuang.hmcl.util.Lang.tryCast;
-import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+import org.glavo.url.WebURL;
+import org.jackhuang.hmcl.auth.yggdrasil.YggdrasilService;
+import org.jackhuang.hmcl.util.io.HttpRequest;
+import org.jackhuang.hmcl.util.io.NetworkUtils;
+import org.jackhuang.hmcl.util.javafx.ObservableHelper;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.annotations.JsonAdapter;
+
+import javafx.application.Platform;
+import javafx.beans.InvalidationListener;
+import javafx.beans.Observable;
 
 @JsonAdapter(AuthlibInjectorServer.Deserializer.class)
 @NotNullByDefault
@@ -184,29 +208,6 @@ public class AuthlibInjectorServer implements Observable {
 
     public void invalidateMetadataCache() {
         metadataRefreshed = false;
-    }
-
-    public String getDisplayHostUrl() {
-        String url = this.getUrl();
-
-        try {
-            WebURL parsed = WebURL.parseBrowserInput(url);
-            if ("https".equals(parsed.getScheme())) {
-                StringBuilder builder = new StringBuilder();
-                builder.append(parsed.getHost());
-                if (parsed.getPort() != 443) {
-                    builder.append(':').append(parsed.getPort());
-                }
-
-                if (!"/api/yggdrasil/".equals(parsed.getPath()))
-                    builder.append(parsed.getPath());
-
-                return builder.toString();
-            }
-        } catch (Exception e) {
-            LOG.warning("Unparsable authlib-injector server url " + url, e);
-        }
-        return url;
     }
 
     @Override

@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.auth.microsoft;
 
 import com.google.gson.Gson;
@@ -7,7 +22,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.JsonAdapter;
 import com.google.gson.annotations.SerializedName;
-import org.glavo.url.WebURL;
 import org.glavo.uuid.UUIDs;
 import org.jackhuang.hmcl.auth.AuthenticationException;
 import org.jackhuang.hmcl.auth.OAuth;
@@ -25,6 +39,7 @@ import org.jackhuang.hmcl.util.javafx.ObservableOptionalCache;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -275,13 +290,13 @@ public class MicrosoftService {
             String response = NetworkUtils.readFullyAsString(con);
             if (StringUtils.isBlank(response)) {
                 if (con.getResponseCode() / 100 != 2)
-                    throw new ResponseCodeException(WebURL.of(con.getURL()), con.getResponseCode());
+                    throw new ResponseCodeException(con.getURL().toURI(), con.getResponseCode());
             } else {
                 MinecraftErrorResponse profileResponse = GSON.fromJson(response, MinecraftErrorResponse.class);
                 if (StringUtils.isNotBlank(profileResponse.errorMessage) || con.getResponseCode() / 100 != 2)
                     throw new AuthenticationException("Failed to upload skin, response code: " + con.getResponseCode() + ", response: " + response);
             }
-        } catch (IOException | JsonParseException e) {
+        } catch (IOException | JsonParseException | URISyntaxException e) {
             throw new AuthenticationException(e);
         }
     }
@@ -291,7 +306,7 @@ public class MicrosoftService {
             if (payload == null)
                 return NetworkUtils.doGet(url);
             else
-                return NetworkUtils.doPost(WebURL.parse(url), payload instanceof String ? (String) payload : GSON.toJson(payload), "application/json");
+                return NetworkUtils.doPost(NetworkUtils.toURI(url), payload instanceof String ? (String) payload : GSON.toJson(payload), "application/json");
         } catch (IOException e) {
             throw new ServerDisconnectException(e);
         }

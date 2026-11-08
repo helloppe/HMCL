@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.account;
 
 import com.jfoenix.controls.JFXButton;
@@ -14,7 +29,9 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Group;
 import javafx.scene.control.Label;
-import javafx.scene.layout.*;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.shape.SVGPath;
 import org.jackhuang.hmcl.auth.Account;
 import org.jackhuang.hmcl.auth.AuthInfo;
@@ -32,10 +49,10 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.WeakListenerHolder;
 import org.jackhuang.hmcl.ui.construct.*;
 import org.jackhuang.hmcl.upgrade.IntegrityChecker;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.QrCodeUtils;
 import org.jackhuang.hmcl.util.StringUtils;
 
-import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
@@ -124,22 +141,22 @@ public class MicrosoftAccountLoginPane extends JFXDialogLayout implements Dialog
         setBody(rootContainer);
         rootContainer.setAlignment(Pos.TOP_CENTER);
 
-        StackPane warningPane = new StackPane();
-        rootContainer.getChildren().add(warningPane);
+        if (Accounts.OAUTH_CALLBACK.getClientId().isEmpty()) {
+            var snapshotHint = new HintPane(MessageDialogPane.MessageType.WARNING);
+            snapshotHint.setSegment(i18n("account.methods.microsoft.snapshot"));
+            rootContainer.getChildren().add(snapshotHint);
+            btnLogin.setDisable(true);
+            loginButtonSpinner.setLoading(false);
+            return;
+        }
 
         if (!IntegrityChecker.isOfficial()) {
             var unofficialHintPane = new HintPane(MessageDialogPane.MessageType.WARNING);
             unofficialHintPane.setSegment(i18n("unofficial.hint"));
-            warningPane.getChildren().setAll(unofficialHintPane);
+            rootContainer.getChildren().add(unofficialHintPane);
         }
 
-        if (Accounts.OAUTH_CALLBACK.getClientId().isEmpty()) {
-            HintPane snapshotHint = new HintPane(MessageDialogPane.MessageType.ERROR);
-            snapshotHint.setSegment(i18n("account.methods.microsoft.snapshot"));
-            warningPane.getChildren().setAll(snapshotHint);
-            btnLogin.setDisable(true);
-            loginButtonSpinner.setLoading(false);
-        } else if (currentStep instanceof Step.Init) {
+        if (currentStep instanceof Step.Init) {
             btnLogin.setOnAction(e -> this.step.set(new Step.StartAuthorizationCodeLogin()));
             loginButtonSpinner.setLoading(false);
 
@@ -181,20 +198,6 @@ public class MicrosoftAccountLoginPane extends JFXDialogLayout implements Dialog
         } else if (currentStep instanceof Step.WaitForScanQrCode wait) {
             loginButtonSpinner.setLoading(true);
 
-            VBox leftVBox = new VBox(6);
-            leftVBox.setAlignment(Pos.CENTER);
-            VBox rightVBox = new VBox(6);
-
-            HBox hbox = new HBox(leftVBox, rightVBox);
-
-            leftVBox.prefWidthProperty().bind(hbox.widthProperty().divide(2));
-            rightVBox.prefWidthProperty().bind(hbox.widthProperty().divide(2));
-            leftVBox.setMaxWidth(Double.MAX_VALUE);
-            rightVBox.setMaxWidth(Double.MAX_VALUE);
-
-            HBox.setHgrow(leftVBox, Priority.ALWAYS);
-            HBox.setHgrow(rightVBox, Priority.ALWAYS);
-
             String scanUri = "https://www.microsoft.com/link".equals(wait.verificationUri())
                     ? "https://www.microsoft.com/link?otc=" + wait.userCode()
                     : wait.verificationUri();
@@ -214,7 +217,7 @@ public class MicrosoftAccountLoginPane extends JFXDialogLayout implements Dialog
 
             var lblCode = new Label(wait.userCode());
             lblCode.getStyleClass().add("code-label");
-            lblCode.setStyle("-fx-font-family: \"" + Objects.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT) + "\";");
+            lblCode.setStyle("-fx-font-family: \"" + Lang.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT) + "\";");
 
             var codeBox = new StackPane(lblCode);
             codeBox.getStyleClass().add("code-box");
@@ -222,10 +225,7 @@ public class MicrosoftAccountLoginPane extends JFXDialogLayout implements Dialog
             FXUtils.onClicked(codeBox, () -> FXUtils.copyText(wait.userCode()));
             codeBox.setMaxWidth(USE_PREF_SIZE);
 
-            leftVBox.getChildren().setAll(new Group(qrCode), codeBox);
-            rightVBox.getChildren().setAll(warningPane, deviceHint);
-
-            rootContainer.getChildren().setAll(hbox);
+            rootContainer.getChildren().addAll(deviceHint, new Group(qrCode), codeBox);
         } else if (currentStep instanceof Step.DeviceLoginCompleted) {
             loginButtonSpinner.setLoading(true);
 
@@ -250,9 +250,6 @@ public class MicrosoftAccountLoginPane extends JFXDialogLayout implements Dialog
         if (currentStep instanceof Step.Init || currentStep instanceof Step.StartAuthorizationCodeLogin || currentStep instanceof Step.WaitForOpenBrowser) {
             JFXHyperlink useQrCode = new JFXHyperlink(i18n("account.methods.microsoft.methods.device"));
             useQrCode.setOnAction(e -> this.step.set(new Step.StartDeviceCodeLogin()));
-
-            if (Accounts.OAUTH_CALLBACK.getClientId().isEmpty()) useQrCode.setDisable(true);
-
             linkBox.getChildren().add(useQrCode);
         } else if (currentStep instanceof Step.StartDeviceCodeLogin || currentStep instanceof Step.WaitForScanQrCode) {
             JFXHyperlink userBrowser = new JFXHyperlink(i18n("account.methods.microsoft.methods.browser"));

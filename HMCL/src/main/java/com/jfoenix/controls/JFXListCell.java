@@ -199,9 +199,6 @@ public class JFXListCell<T> extends ListCell<T> {
      */
     @Override
     protected void updateItem(T item, boolean empty) {
-        T oldItem = getItem();
-        boolean oldEmpty = isEmpty();
-        if (oldItem != item || oldEmpty != empty) cellRippler.releaseRippleImmediately();
         super.updateItem(item, empty);
         if (empty) {
             setText(null);

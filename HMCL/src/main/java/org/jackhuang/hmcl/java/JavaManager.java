@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2024 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2024 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.java;
 
 import com.google.gson.JsonArray;
@@ -11,13 +26,18 @@ import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.download.DownloadProvider;
-import org.jackhuang.hmcl.game.*;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
+import org.jackhuang.hmcl.game.GameJavaVersion;
+import org.jackhuang.hmcl.game.JavaVersionConstraint;
+import org.jackhuang.hmcl.game.Version;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.util.CacheRepository;
 import org.jackhuang.hmcl.util.DigestUtils;
 import org.jackhuang.hmcl.util.FXThread;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
@@ -295,13 +315,13 @@ public final class JavaManager {
     }
 
     @Nullable
-    public static JavaRuntime findSuitableJava(GameVersionNumber gameVersion, GameInstanceManifest manifest) throws InterruptedException {
-        return findSuitableJava(getAllJava(), gameVersion, manifest);
+    public static JavaRuntime findSuitableJava(GameVersionNumber gameVersion, Version version) throws InterruptedException {
+        return findSuitableJava(getAllJava(), gameVersion, version);
     }
 
     @Nullable
-    public static JavaRuntime findSuitableJava(Collection<JavaRuntime> javaRuntimes, GameVersionNumber gameVersion, GameInstanceManifest manifest) {
-        GameComponentAnalyzer analyzer = manifest != null ? GameComponentAnalyzer.analyze(manifest, gameVersion) : null;
+    public static JavaRuntime findSuitableJava(Collection<JavaRuntime> javaRuntimes, GameVersionNumber gameVersion, Version version) {
+        LibraryAnalyzer analyzer = version != null ? LibraryAnalyzer.analyze(version, gameVersion != null ? gameVersion.toString() : null) : null;
 
         boolean forceX86 = Architecture.SYSTEM_ARCH == Architecture.ARM64
                 && (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS || OperatingSystem.CURRENT_OS == OperatingSystem.MACOS)
@@ -322,8 +342,8 @@ public final class JavaManager {
             boolean violationSuggested = false;
 
             for (JavaVersionConstraint constraint : JavaVersionConstraint.ALL) {
-                if (constraint.appliesToVersion(gameVersion, manifest, java, analyzer)) {
-                    if (!constraint.checkJava(gameVersion, manifest, java, analyzer)) {
+                if (constraint.appliesToVersion(gameVersion, version, java, analyzer)) {
+                    if (!constraint.checkJava(gameVersion, version, java, analyzer)) {
                         if (constraint.isMandatory()) {
                             violationMandatory = true;
                         } else {
@@ -418,14 +438,14 @@ public final class JavaManager {
             FileUtils.tryGetPath(System.getenv("localappdata"), "Packages\\Microsoft.4297127D64EC6_8wekyb3d8bbwe\\LocalCache\\Local\\runtime")
                     .ifPresent(it -> searcher.searchAllOfficialJava(it, false));
 
-            FileUtils.tryGetPath(Objects.requireNonNullElse(System.getenv("ProgramFiles(x86)"), "C:\\Program Files (x86)"), "Minecraft Launcher\\runtime")
+            FileUtils.tryGetPath(Lang.requireNonNullElse(System.getenv("ProgramFiles(x86)"), "C:\\Program Files (x86)"), "Minecraft Launcher\\runtime")
                     .ifPresent(it -> searcher.searchAllOfficialJava(it, false));
         } else if (OperatingSystem.CURRENT_OS == OperatingSystem.LINUX && Architecture.SYSTEM_ARCH == Architecture.X86_64) {
             searcher.searchAllOfficialJava(Path.of(System.getProperty("user.home"), ".minecraft/runtime"), false);
         } else if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
             searcher.searchAllOfficialJava(Path.of(System.getProperty("user.home"), "Library/Application Support/minecraft/runtime"), false);
         }
-        searcher.searchAllOfficialJava(HMCLCacheRepository.REPOSITORY.getCacheDirectory().resolve("java"), true);
+        searcher.searchAllOfficialJava(CacheRepository.getInstance().getCacheDirectory().resolve("java"), true);
 
         // Search in PATH.
         if (System.getenv("PATH") != null) {
@@ -479,7 +499,7 @@ public final class JavaManager {
                         it.isJDK() ? "JDK" : "JRE",
                         it.getVersion(),
                         it.getPlatform().getArchitecture().getDisplayName(),
-                        Objects.requireNonNullElse(it.getVendor(), "Unknown"),
+                        Lang.requireNonNullElse(it.getVendor(), "Unknown"),
                         it.getBinary()))
                 .collect(Collectors.joining("\n", "Finished Java lookup, found " + searcher.javaRuntimes.size() + "\n", "")));
         return searcher.javaRuntimes;
@@ -822,7 +842,7 @@ public final class JavaManager {
         }
 
         void searchJavaInProgramFiles(String env, String defaultValue) {
-            String programFiles = Objects.requireNonNullElse(System.getenv(env), defaultValue);
+            String programFiles = Lang.requireNonNullElse(System.getenv(env), defaultValue);
             Path path;
             try {
                 path = Path.of(programFiles);

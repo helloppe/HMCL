@@ -1,9 +1,23 @@
-// SPDX-FileCopyrightText: Copyright (C) 2025 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2025  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.terracotta;
 
 import com.jfoenix.controls.JFXProgressBar;
-import javafx.beans.binding.Binding;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleDoubleProperty;
@@ -34,14 +48,14 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.WeakListenerHolder;
+import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
 import org.jackhuang.hmcl.ui.animation.TransitionPane;
 import org.jackhuang.hmcl.ui.construct.*;
-import org.jackhuang.hmcl.ui.instances.Instances;
-import org.jackhuang.hmcl.util.RegionUtils;
+import org.jackhuang.hmcl.ui.versions.Versions;
 import org.jackhuang.hmcl.util.i18n.I18n;
+import org.jackhuang.hmcl.util.i18n.LocaleUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.Zipper;
-import org.jackhuang.hmcl.util.javafx.BindingMapping;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -70,22 +84,15 @@ public class TerracottaControllerPage extends StackPane {
         });
     }
 
-    @SuppressWarnings("FieldCanBeLocal")
-    private final Binding<Boolean> focusedBinding;
-    @SuppressWarnings("FieldCanBeLocal")
     private final WeakListenerHolder holder = new WeakListenerHolder();
 
     /* FIXME: It's sucked to have such a long logic, containing UI for all states defined in TerracottaState, with unclear control flows.
          Consider moving UI into multiple files for each state respectively. */
     public TerracottaControllerPage() {
-        focusedBinding = BindingMapping.of(this.sceneProperty())
-                .flatMap(it -> it != null ? it.windowProperty() : new SimpleObjectProperty<>())
-                .flatMap(it -> it != null ? it.focusedProperty() : null, () -> false);
-
-        FXUtils.onChange(focusedBinding, focused -> {
+        holder.add(FXUtils.observeWeak(() -> {
             // Run daemon process only if HMCL is focused and is displaying current node.
-            TerracottaManager.switchDaemon(getScene() != null && focused);
-        });
+            TerracottaManager.switchDaemon(getScene() != null && Controllers.getStage().isFocused());
+        }, this.sceneProperty(), Controllers.getStage().focusedProperty()));
 
         TransitionPane transition = new TransitionPane();
 
@@ -203,9 +210,9 @@ public class TerracottaControllerPage extends StackPane {
                                 i18n("terracotta.status.waiting.host.launch.desc"),
                                 i18n("terracotta.status.waiting.host.launch.title"),
                                 MessageDialogPane.MessageType.QUESTION
-                        ).addAction(i18n("instance.launch"), () -> {
+                        ).addAction(i18n("version.launch"), () -> {
                             var repository = GameDirectoryManager.getSelectedRepository();
-                            Instances.launch(repository.getSelectedInstance(), launcherHelper -> {
+                            Versions.launch(repository, repository.getSelectedInstance(), launcherHelper -> {
                                 launcherHelper.setKeep();
                                 launcherHelper.setDisableOfflineSkin();
                             });
@@ -516,7 +523,7 @@ public class TerracottaControllerPage extends StackPane {
             }
             // Prevent the shadow of components from being clipped
             StackPane.setMargin(components, new Insets(0, 0, 5, 0));
-            transition.setContent(components, TabController.TabAnimation.TAB_UP);
+            transition.setContent(components, ContainerAnimations.SLIDE_UP_FADE_IN);
         };
         listener.changed(UI_STATE, null, UI_STATE.get());
         holder.add(listener);
@@ -524,7 +531,7 @@ public class TerracottaControllerPage extends StackPane {
 
         VBox content = new VBox(10);
         content.getChildren().add(ComponentList.createComponentListTitle(i18n("terracotta.status")));
-        if (!"CN".equals(RegionUtils.MACHINE_REGION)) {
+        if (!LocaleUtils.IS_CHINA_MAINLAND) {
             HintPane hintPane = new HintPane(MessageDialogPane.MessageType.WARNING);
             hintPane.setText(i18n("terracotta.unsupported.region"));
             content.getChildren().add(hintPane);
@@ -540,13 +547,10 @@ public class TerracottaControllerPage extends StackPane {
         getChildren().setAll(scrollPane);
     }
 
-    /// Creates an expandable group of third-party download links with a mouse-transparent decorative icon.
     private ComponentSublist getThirdPartyDownloadNodes() {
         ComponentSublist locals = new ComponentSublist();
         locals.setLargeTitle(true);
-        ImageView icon = new ImageView(FXUtils.newBuiltinImage("/assets/img/terracotta.png"));
-        icon.setMouseTransparent(true);
-        locals.setLeading(icon);
+        locals.setLeading(new ImageView(FXUtils.newBuiltinImage("/assets/img/terracotta.png")));
         locals.setTitle(i18n("terracotta.from_local.title"));
         locals.setSubtitle(i18n("terracotta.from_local.desc"));
 
@@ -604,7 +608,7 @@ public class TerracottaControllerPage extends StackPane {
                 pane.getChildren().add(item);
             }
 
-            this.transition.setContent(pane, TabController.TabAnimation.TAB_UP);
+            this.transition.setContent(pane, ContainerAnimations.SLIDE_UP_FADE_IN);
         }
     }
 }

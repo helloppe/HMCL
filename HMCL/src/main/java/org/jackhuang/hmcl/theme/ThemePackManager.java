@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.theme;
 
 import com.google.gson.JsonParseException;
@@ -11,7 +26,6 @@ import org.glavo.monetfx.Brightness;
 import org.glavo.monetfx.ColorRole;
 import org.glavo.monetfx.ColorStyle;
 import org.glavo.monetfx.Contrast;
-import org.glavo.url.WebURL;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.setting.BackgroundType;
 import org.jackhuang.hmcl.setting.LauncherSettings;
@@ -22,8 +36,8 @@ import org.jackhuang.hmcl.util.MathUtils;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.i18n.LocalizedText;
-import org.jackhuang.hmcl.util.io.ContentEncoding;
 import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.util.io.ContentEncoding;
 import org.jackhuang.hmcl.util.io.IOUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -34,6 +48,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -1482,28 +1497,28 @@ public final class ThemePackManager {
             List<Path> temporaryFiles,
             ResolvedBackground background) throws IOException {
         String url = requireNonBlank(background.networkImageUrl(), "background.url");
-        WebURL webUrl = WebURL.parse(url);
-        if (!NetworkUtils.isHttpUri(webUrl)) {
+        URI uri = NetworkUtils.toURI(url);
+        if (!NetworkUtils.isHttpUri(uri)) {
             throw new IOException("Theme background URL must be HTTP or HTTPS: " + url);
         }
 
-        String entryName = "assets/wallpapers/" + networkBackgroundAssetName(webUrl);
+        String entryName = "assets/wallpapers/" + networkBackgroundAssetName(uri);
         if (background.networkImageCachePolicy() == NetworkBackgroundImageCachePolicy.ENABLED) {
             try {
-                @Nullable Path cachedFile = new CacheFileTask(webUrl).run();
+                @Nullable Path cachedFile = new CacheFileTask(uri).run();
                 if (cachedFile != null && Files.isRegularFile(cachedFile)) {
                     assets.add(new ThemePackAsset(cachedFile, entryName));
                     return new ThemeBackground.Image(entryName);
                 }
             } catch (Exception e) {
-                LOG.warning("Failed to cache theme background, falling back to direct download: " + webUrl, e);
+                LOG.warning("Failed to cache theme background, falling back to direct download: " + uri, e);
             }
         }
 
         Path temporaryFile = Files.createTempFile("hmcl-theme-background-", ".tmp");
         boolean success = false;
         try {
-            downloadNetworkBackground(webUrl, temporaryFile);
+            downloadNetworkBackground(uri, temporaryFile);
             assets.add(new ThemePackAsset(temporaryFile, entryName));
             temporaryFiles.add(temporaryFile);
             success = true;
@@ -1520,12 +1535,12 @@ public final class ThemePackManager {
     }
 
     /// Downloads one network background into a temporary file without installing it into the persistent image cache.
-    private static void downloadNetworkBackground(WebURL url, Path outputFile) throws IOException {
-        HttpURLConnection connection = NetworkUtils.resolveConnection(NetworkUtils.createHttpConnection(url));
+    private static void downloadNetworkBackground(URI uri, Path outputFile) throws IOException {
+        HttpURLConnection connection = NetworkUtils.resolveConnection(NetworkUtils.createHttpConnection(uri));
         try {
             int responseCode = connection.getResponseCode();
             if (responseCode / 100 != 2) {
-                throw new IOException("Failed to download theme background: HTTP " + responseCode + " " + url);
+                throw new IOException("Failed to download theme background: HTTP " + responseCode + " " + uri);
             }
 
             ContentEncoding contentEncoding = ContentEncoding.fromConnection(connection);
@@ -1539,8 +1554,8 @@ public final class ThemePackManager {
     }
 
     /// Returns a safe theme-pack asset file name for a downloaded network background.
-    private static String networkBackgroundAssetName(WebURL url) {
-        String path = Objects.toString(url.getPath(), "");
+    private static String networkBackgroundAssetName(URI uri) {
+        String path = Objects.toString(uri.getPath(), "");
         @Nullable Path fileNamePath = path.isBlank() ? null : Path.of(path).getFileName();
         String fileName = fileNamePath != null ? fileNamePath.toString() : "";
         String sanitized = sanitizePathSegment(fileName);

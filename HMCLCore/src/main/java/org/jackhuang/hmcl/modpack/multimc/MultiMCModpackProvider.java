@@ -1,24 +1,36 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack.multimc;
 
 import kala.compress.archivers.zip.ZipArchiveEntry;
 import kala.compress.archivers.zip.ZipArchiveReader;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.DefaultGameInstance;
-import org.jackhuang.hmcl.game.GameInstanceID;
 import org.jackhuang.hmcl.modpack.MismatchedModpackTypeException;
 import org.jackhuang.hmcl.modpack.Modpack;
 import org.jackhuang.hmcl.modpack.ModpackProvider;
 import org.jackhuang.hmcl.modpack.ModpackUpdateTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.io.FileUtils;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.Set;
 
 public final class MultiMCModpackProvider implements ModpackProvider {
     public static final MultiMCModpackProvider INSTANCE = new MultiMCModpackProvider();
@@ -29,21 +41,16 @@ public final class MultiMCModpackProvider implements ModpackProvider {
     }
 
     @Override
-    public @Nullable Task<?> createCompletionTask(DefaultDependencyManager dependencyManager, DefaultGameInstance instance) {
+    public Task<?> createCompletionTask(DefaultDependencyManager dependencyManager, String version) {
         return null;
     }
 
     @Override
-    public Task<?> createUpdateTask(
-            DefaultDependencyManager dependencyManager,
-            DefaultGameInstance instance,
-            Path zipFile,
-            Modpack modpack,
-            @Nullable Set<String> excludedFiles) throws MismatchedModpackTypeException {
+    public Task<?> createUpdateTask(DefaultDependencyManager dependencyManager, String name, Path zipFile, Modpack modpack) throws MismatchedModpackTypeException {
         if (!(modpack.getManifest() instanceof MultiMCInstanceConfiguration multiMCInstanceConfiguration))
             throw new MismatchedModpackTypeException(getName(), modpack.getManifest().getProvider().getName());
 
-        return new ModpackUpdateTask(instance, new MultiMCModpackInstallTask(dependencyManager, zipFile, modpack, multiMCInstanceConfiguration, instance));
+        return new ModpackUpdateTask(dependencyManager.getGameRepository(), name, new MultiMCModpackInstallTask(dependencyManager, zipFile, modpack, multiMCInstanceConfiguration, name));
     }
 
     private static String getRootEntryName(ZipArchiveReader file) throws IOException {
@@ -65,7 +72,7 @@ public final class MultiMCModpackProvider implements ModpackProvider {
     }
 
     @Override
-    public Modpack readManifest(ZipArchiveReader modpackFile, Path modpackPath) throws IOException {
+    public Modpack readManifest(ZipArchiveReader modpackFile, Path modpackPath, Charset encoding) throws IOException {
         String rootEntryName = getRootEntryName(modpackFile);
         MultiMCManifest manifest = MultiMCManifest.readMultiMCModpackManifest(modpackFile, rootEntryName);
 
@@ -76,15 +83,10 @@ public final class MultiMCModpackProvider implements ModpackProvider {
             throw new IOException("`instance.cfg` not found, " + modpackFile + " is not a valid MultiMC modpack.");
         try (InputStream instanceStream = modpackFile.getInputStream(instanceEntry)) {
             MultiMCInstanceConfiguration cfg = new MultiMCInstanceConfiguration(name, instanceStream, manifest);
-            return new Modpack(cfg.getName(), "", "", cfg.getGameVersion(), cfg.getNotes(), cfg) {
+            return new Modpack(cfg.getName(), "", "", cfg.getGameVersion(), cfg.getNotes(), encoding, cfg) {
                 @Override
-                public Task<?> getInstallTask(
-                        DefaultDependencyManager dependencyManager,
-                        Path zipFile,
-                        GameInstanceID instanceId,
-                        String iconUrl,
-                        @Nullable Set<String> excludedFiles) {
-                    return new MultiMCModpackInstallTask(dependencyManager, zipFile, this, cfg, instanceId);
+                public Task<?> getInstallTask(DefaultDependencyManager dependencyManager, Path zipFile, String name, String iconUrl) {
+                    return new MultiMCModpackInstallTask(dependencyManager, zipFile, this, cfg, name);
                 }
             };
         }

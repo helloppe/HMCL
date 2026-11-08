@@ -1,18 +1,21 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util;
-
-import org.commonmark.ext.autolink.AutolinkExtension;
-import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension;
-import org.commonmark.ext.gfm.tables.TablesExtension;
-import org.commonmark.ext.ins.InsExtension;
-import org.commonmark.node.IndentedCodeBlock;
-import org.commonmark.node.Node;
-import org.commonmark.parser.Parser;
-import org.commonmark.renderer.NodeRenderer;
-import org.commonmark.renderer.html.HtmlNodeRendererContext;
-import org.commonmark.renderer.html.HtmlRenderer;
-import org.commonmark.renderer.html.HtmlWriter;
 
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jetbrains.annotations.Contract;
@@ -111,25 +114,6 @@ public final class StringUtils {
             return str;
 
         return Character.toUpperCase(str.charAt(0)) + str.substring(1);
-    }
-
-    public static @Nullable String capitalizeWords(@Nullable String str) {
-        if (str == null || str.isEmpty())
-            return str;
-        String[] words = str.replace('-', ' ').replace('_', ' ').split(" ");
-        for (int i = 0; i < words.length; i++) {
-            words[i] = capitalizeFirst(words[i]);
-        }
-        return String.join(" ", words);
-    }
-
-    public static boolean containsDigit(String str) {
-        int l = str.length();
-        for (int i = 0; i < l; i++) {
-            char c = str.charAt(i);
-            if ('0' <= c && c <= '9') return true;
-        }
-        return false;
     }
 
     public static String substringBeforeLast(String str, char delimiter) {
@@ -282,10 +266,6 @@ public final class StringUtils {
 
     public static boolean endsWithAny(String str, Collection<String> suffixes) {
         return suffixes.stream().anyMatch(str::endsWith);
-    }
-
-    public static boolean startsWithIgnoreCase(String str, String prefix) {
-        return str.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
     public static Predicate<@Nullable String> compileQuery(String queryString) throws PatternSyntaxException {
@@ -601,7 +581,11 @@ public final class StringUtils {
     }
 
     public static String repeats(char ch, int repeat) {
-        return String.valueOf(ch).repeat(Math.max(0, repeat));
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < repeat; i++) {
+            result.append(ch);
+        }
+        return result.toString();
     }
 
     public static String truncate(String str, int limit) {
@@ -622,30 +606,11 @@ public final class StringUtils {
         return true;
     }
 
-    public static boolean isASCII(byte[] array) {
-        for (byte b : array)
-            if (b < 0)
-                return false;
-        return true;
-    }
-
-    public static boolean isAlphabetic(char ch) {
-        return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z';
-    }
-
-    public static boolean isAlphabetic(String str) {
-        int length = str.length();
-        for (int i = 0; i < length; i++) {
-            if (!isAlphabetic(str.charAt(i))) return false;
-        }
-        return true;
-    }
-
     public static boolean isAlphabeticOrNumber(String str) {
         int length = str.length();
         for (int i = 0; i < length; i++) {
             char ch = str.charAt(i);
-            if (!(ch >= '0' && ch <= '9') && !isAlphabetic(ch))
+            if (!(ch >= '0' && ch <= '9') && !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z'))
                 return false;
         }
         return true;
@@ -663,60 +628,6 @@ public final class StringUtils {
     public static List<String> deserializeStringList(String json) {
         if (json == null || json.isBlank()) return List.of();
         return JsonUtils.fromNonNullJson(json, JsonUtils.listTypeOf(String.class));
-    }
-
-    private static final HtmlRenderer HTML_RENDERER = HtmlRenderer.builder().extensions(List.of(
-            InsExtension.create(), StrikethroughExtension.create(), TablesExtension.create()
-    )).build();
-
-    private static final HtmlRenderer HTML_RENDERER_RAW_INDENTED_BLOCK = HtmlRenderer.builder()
-            .extensions(List.of(InsExtension.create(), StrikethroughExtension.create(), TablesExtension.create()))
-            .nodeRendererFactory(IndentedBlockRawRenderer::new)
-            .build();
-
-    private static final Parser MD_PARSER = Parser.builder().extensions(List.of(
-            AutolinkExtension.create(), InsExtension.create(), StrikethroughExtension.create(), TablesExtension.create()
-    )).build();
-
-    public static @Nullable String convertToHtml(String str, boolean rawIndentedBlocks) {
-        if (str == null) return null;
-        if (isBlank(str)) return "";
-
-        if (rawIndentedBlocks)
-            return HTML_RENDERER_RAW_INDENTED_BLOCK.render(MD_PARSER.parse(str));
-        return HTML_RENDERER.render(MD_PARSER.parse(str));
-    }
-
-    private static final class IndentedBlockRawRenderer implements NodeRenderer {
-
-        private final HtmlWriter html;
-
-        public IndentedBlockRawRenderer(HtmlNodeRendererContext context) {
-            this.html = context.getWriter();
-        }
-
-        @Override
-        public Set<Class<? extends Node>> getNodeTypes() {
-            return Set.of(IndentedCodeBlock.class);
-        }
-
-        @Override
-        public void render(Node node) {
-            IndentedCodeBlock block = (IndentedCodeBlock) node;
-            html.line();
-            html.raw(block.getLiteral());
-            html.line();
-        }
-
-    }
-
-    public static OptionalInt toInt(String s) {
-        if (isBlank(s)) return OptionalInt.empty();
-        try {
-            return OptionalInt.of(Integer.parseInt(s));
-        } catch (NumberFormatException e) {
-            return OptionalInt.empty();
-        }
     }
 
     public static class LevCalculator {

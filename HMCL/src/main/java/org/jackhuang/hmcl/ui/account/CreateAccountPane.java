@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.account;
 
 import com.jfoenix.controls.*;
@@ -52,10 +67,11 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.unmodifiableList;
 import static javafx.beans.binding.Bindings.bindContent;
 import static javafx.beans.binding.Bindings.createBooleanBinding;
-import static org.jackhuang.hmcl.setting.SettingsManager.getAuthlibInjectorServers;
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
+import static org.jackhuang.hmcl.setting.SettingsManager.getAuthlibInjectorServers;
 import static org.jackhuang.hmcl.ui.FXUtils.*;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.javafx.ExtendedProperties.classPropertyFor;
 
 public class CreateAccountPane extends JFXDialogLayout implements DialogAware {
     private static final Pattern USERNAME_CHECKER_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
@@ -133,19 +149,14 @@ public class CreateAccountPane extends JFXDialogLayout implements DialogAware {
         }
 
         if (showMethodSwitcher) {
-            TabItem<?>[] tabs = new TabItem<?>[Accounts.FACTORIES.size()];
-            var tabToFactory = new IdentityHashMap<TabItem<?>, AccountFactory<?>>();
-
-            @Nullable TabItem<?> selected = null;
+            TabControl.Tab<?>[] tabs = new TabControl.Tab[Accounts.FACTORIES.size()];
+            TabControl.Tab<?> selected = null;
             for (int i = 0; i < tabs.length; i++) {
                 AccountFactory<?> f = Accounts.FACTORIES.get(i);
-                TabItem<Node> tab = new TabItem<>();
-                tabs[i] = tab;
-
-                tab.setText(Accounts.getLocalizedLoginTypeName(f));
-                tabToFactory.put(tab, f);
+                tabs[i] = new TabControl.Tab<>(Accounts.getLoginType(f), Accounts.getLocalizedLoginTypeName(f));
+                tabs[i].setUserData(f);
                 if (factory == f) {
-                    selected = tab;
+                    selected = tabs[i];
                 }
             }
 
@@ -153,13 +164,12 @@ public class CreateAccountPane extends JFXDialogLayout implements DialogAware {
             tabHeader.getStyleClass().add("add-account-tab-header");
             tabHeader.setMinWidth(USE_PREF_SIZE);
             tabHeader.setMaxWidth(USE_PREF_SIZE);
-            if (selected != null)
-                tabHeader.getController().selectTab(selected);
-            onChange(tabHeader.getController().selectedTabProperty(),
+            tabHeader.getSelectionModel().select(selected);
+            onChange(tabHeader.getSelectionModel().selectedItemProperty(),
                     newItem -> {
                         if (newItem == null)
                             return;
-                        AccountFactory<?> newMethod = tabToFactory.get(newItem);
+                        AccountFactory<?> newMethod = (AccountFactory<?>) newItem.getUserData();
                         settings().preferredLoginTypeProperty().set(Accounts.getLoginType(newMethod));
                         this.factory = newMethod;
                         initDetailsPane();
@@ -378,22 +388,20 @@ public class CreateAccountPane extends JFXDialogLayout implements DialogAware {
                 add(lblServers, 0, rowIndex);
 
                 cboServers = new JFXComboBox<>();
-                cboServers.setConverter(stringConverter(it -> String.format("%s (%s)", it.getName(), it.getDisplayHostUrl())));
+                cboServers.setCellFactory(jfxListCellFactory(server -> new TwoLineListItem(server.getName(), server.getUrl())));
+                cboServers.setConverter(stringConverter(AuthlibInjectorServer::getName));
                 bindContent(cboServers.getItems(), getAuthlibInjectorServers());
                 cboServers.getItems().addListener(onInvalidating(
                         () -> Platform.runLater( // the selection will not be updated as expected if we call it immediately
                                 cboServers.getSelectionModel()::selectFirst)));
                 cboServers.getSelectionModel().selectFirst();
-
-                Label noServersLabel = new Label(i18n("account.injector.empty"));
+                cboServers.setPromptText(i18n("account.injector.empty"));
                 BooleanBinding noServers = createBooleanBinding(cboServers.getItems()::isEmpty, cboServers.getItems());
-
+                classPropertyFor(cboServers, "jfx-combo-box-warning").bind(noServers);
+                classPropertyFor(cboServers, "jfx-combo-box").bind(noServers.not());
                 HBox.setHgrow(cboServers, Priority.ALWAYS);
                 HBox.setMargin(cboServers, new Insets(0, 10, 0, 0));
                 cboServers.setMaxWidth(Double.MAX_VALUE);
-                HBox.setHgrow(noServersLabel, Priority.ALWAYS);
-                HBox.setMargin(noServersLabel, new Insets(0, 10, 0, 0));
-                noServersLabel.setMaxWidth(Double.MAX_VALUE);
 
                 HBox linksContainer = new HBox();
                 linksContainer.setAlignment(Pos.CENTER);
@@ -411,13 +419,7 @@ public class CreateAccountPane extends JFXDialogLayout implements DialogAware {
                     Controllers.dialog(new AddAuthlibInjectorServerPane());
                 });
 
-                noServersLabel.visibleProperty().bind(noServers);
-                noServersLabel.managedProperty().bind(noServers);
-                cboServers.visibleProperty().bind(noServers.not());
-                cboServers.managedProperty().bind(noServers.not());
-
-                HBox boxServers = new HBox(cboServers, noServersLabel, linksContainer, btnAddServer);
-                boxServers.setAlignment(Pos.CENTER_LEFT);
+                HBox boxServers = new HBox(cboServers, linksContainer, btnAddServer);
                 add(boxServers, 1, rowIndex);
 
                 rowIndex++;

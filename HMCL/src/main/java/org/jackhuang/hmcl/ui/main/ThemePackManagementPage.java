@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import com.jfoenix.controls.JFXButton;
@@ -7,11 +22,8 @@ import com.jfoenix.controls.JFXDialogLayout;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXTextField;
 import javafx.animation.PauseTransition;
-import javafx.beans.binding.Bindings;
-import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyObjectProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -20,7 +32,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
-import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Skin;
@@ -30,6 +41,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.jackhuang.hmcl.theme.*;
 import org.jackhuang.hmcl.ui.*;
@@ -147,7 +159,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
         chooser.getExtensionFilters().setAll(
                 new FileChooser.ExtensionFilter(i18n("theme_pack.file"), "*" + ThemePackExporter.FILE_EXTENSION));
 
-        @Nullable Path file = Controllers.showOpenDialog(chooser);
+        @Nullable Path file = FileUtils.toPath(chooser.showOpenDialog(Controllers.getStage()));
         if (file == null) {
             return;
         }
@@ -403,7 +415,11 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
         /// @param themePack the installed theme pack to display
         private ThemePackInfoDialog(ThemePackManagementPage page, ThemePackManager.InstalledThemePack themePack) {
             ThemePackManifest manifest = themePack.manifest();
-            maxWidthProperty().bind(Controllers.getDecorator().contentWidthProperty().multiply(0.7));
+            Stage stage = Controllers.getStage();
+            maxWidthProperty().bind(stage.widthProperty().multiply(0.7));
+
+            HBox heading = new HBox(8);
+            heading.setAlignment(Pos.CENTER_LEFT);
 
             Node icon = page.createIconNode(themePack, manifest.icon(), SVG.PACKAGE2);
             TwoLineListItem title = new TwoLineListItem();
@@ -415,9 +431,8 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
             if (!StringUtils.isBlank(authors)) {
                 title.addTag(i18n("archive.author") + ": " + authors);
             }
-            TwoLineListItem.setMargin(icon, new Insets(0, 8, 0, 0));
-            title.setLeading(icon);
-            setHeading(title);
+            heading.getChildren().setAll(icon, title);
+            setHeading(heading);
 
             ComponentList themes = new ComponentList();
             themes.getStyleClass().add("no-padding");
@@ -466,7 +481,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
             scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
             scrollPane.setPrefViewportWidth(520);
             scrollPane.setPrefViewportHeight(Math.min(360, manifest.themes().size() * 86));
-            scrollPane.maxHeightProperty().bind(Controllers.getDecorator().contentHeightProperty().multiply(0.55));
+            scrollPane.maxHeightProperty().bind(Controllers.getStage().heightProperty().multiply(0.55));
 
             StackPane body = new StackPane(scrollPane);
             body.setPadding(new Insets(10, 0, 0, 0));
@@ -492,9 +507,6 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
 
         /// Toolbar shown during normal browsing.
         private final HBox toolbarNormal = new HBox();
-
-        /// Whether the search mechanism is currently active.
-        private final BooleanProperty isSearching = new SimpleBooleanProperty(false);
 
         /// Search input.
         private final JFXTextField searchField = new JFXTextField();
@@ -533,20 +545,13 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
             pause.setOnFinished(event ->
                     skinnable.filteredList.setPredicate(skinnable.createPredicate(searchField.getText())));
             searchField.textProperty().addListener((observable, oldValue, newValue) -> {
-                if (isSearching.get() || !StringUtils.isBlank(newValue)) {
-                    pause.setRate(1);
-                    pause.playFromStart();
-                }
+                pause.setRate(1);
+                pause.playFromStart();
             });
 
             JFXButton closeSearchBar = createToolbarButton2(null, SVG.CLOSE, () -> {
                 changeToolbar(toolbarNormal);
-
                 searchField.clear();
-                pause.stop();
-
-                skinnable.filteredList.setPredicate(null);
-                isSearching.set(false);
             });
             onEscPressed(searchField, closeSearchBar::fire);
 
@@ -581,15 +586,6 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
             listView.getStyleClass().add("no-horizontal-scrollbar");
             ignoreEvent(listView, KeyEvent.KEY_PRESSED, event -> event.getCode() == KeyCode.ESCAPE);
 
-            StackPane placeholderContainer = new StackPane();
-            placeholderContainer.getStyleClass().add("notice-pane");
-            Label placeholderLabel = new Label();
-            placeholderLabel.textProperty().bind(
-                Bindings.when(isSearching).then(i18n("search.no_results_found")).otherwise("")
-            );
-            placeholderContainer.getChildren().add(placeholderLabel);
-            listView.setPlaceholder(placeholderContainer);
-
             center.setContent(listView);
             root.getContent().add(center);
         }
@@ -601,8 +597,6 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
                 toolbarPane.setContent(newToolbar, ContainerAnimations.FADE);
                 if (newToolbar == searchBar) {
                     runInFX(searchField::requestFocus);
-
-                    isSearching.set(true);
                 }
             }
         }
@@ -615,7 +609,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
         private final ThemePackManagementPage page;
 
         /// Root graphic reused by this cell.
-        private final RipplerContainer graphic;
+        private final Region graphic;
 
         /// The text content shown for the current theme pack.
         private final TwoLineListItem content = new TwoLineListItem();
@@ -644,31 +638,39 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
         private ThemePackItemCell(ThemePackManagementPage page) {
             this.page = page;
 
-            content.getStyleClass().add("md-list-cell");
-            content.setPadding(new Insets(8));
-            content.setCursor(Cursor.HAND);
+            BorderPane root = new BorderPane();
+            root.getStyleClass().add("md-list-cell");
+            root.setPadding(new Insets(8));
 
-            var ripplerContainer = new RipplerContainer(content);
+            var ripplerContainer = new RipplerContainer(root);
             this.graphic = ripplerContainer;
+
+            HBox center = new HBox();
+            center.setSpacing(8);
+            center.setAlignment(Pos.CENTER_LEFT);
+            center.setMouseTransparent(true);
+            root.setCenter(center);
 
             icon.setMouseTransparent(true);
             icon.getChildren().setAll(iconImage, iconFallback);
-            TwoLineListItem.setMargin(icon, new Insets(0, 8, 0, 0));
-            content.setLeading(icon);
+            BorderPane.setAlignment(content, Pos.CENTER);
+            content.setMouseTransparent(true);
+            center.getChildren().setAll(icon, content);
+            HBox.setHgrow(content, Priority.ALWAYS);
+            center.setCursor(Cursor.HAND);
             FXUtils.onClicked(ripplerContainer, () -> {
-                ThemePackManager.@Nullable InstalledThemePack themePack = getItem();
+                ThemePackManager.InstalledThemePack themePack = getItem();
                 if (themePack != null) {
                     page.selectThemePack(themePack);
                 }
             });
 
             right.setAlignment(Pos.CENTER_RIGHT);
-            right.setPickOnBounds(false);
-            content.setTrailing(right);
+            root.setRight(right);
 
             revealButton = FXUtils.newToggleButton4(SVG.FOLDER_OPEN);
             revealButton.setOnAction(event -> {
-                ThemePackManager.@Nullable InstalledThemePack themePack = getItem();
+                ThemePackManager.InstalledThemePack themePack = getItem();
                 if (themePack != null) {
                     revealThemePack(themePack);
                 }
@@ -677,7 +679,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
 
             deleteButton = FXUtils.newToggleButton4(SVG.DELETE);
             deleteButton.setOnAction(event -> {
-                ThemePackManager.@Nullable InstalledThemePack themePack = getItem();
+                ThemePackManager.InstalledThemePack themePack = getItem();
                 if (themePack != null) {
                     page.deleteThemePack(themePack);
                 }
@@ -688,22 +690,20 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
         /// Updates this cell for one installed theme pack.
         @Override
         protected void updateItem(ThemePackManager.@Nullable InstalledThemePack themePack, boolean empty) {
-            ThemePackManager.@Nullable InstalledThemePack currentItem = getItem();
-            boolean oldEmpty = isEmpty();
+            var currentItem = getItem();
 
             super.updateItem(themePack, empty);
 
-            if (Objects.equals(getItem(), currentItem) && oldEmpty == empty) return;
+            if (Objects.equals(getItem(), currentItem)) return;
 
-            this.graphic.resetFeedback();
+            content.getTags().clear();
             iconImage.setImage(null);
             iconFallback.setVisible(false);
-
             if (empty || themePack == null) {
-                content.getTags().clear();
                 setGraphic(null);
                 return;
             }
+
             setGraphic(graphic);
 
             ThemePackManifest manifest = themePack.manifest();
@@ -711,13 +711,11 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManager
             content.setTitle(manifest.displayName());
             @Nullable String description = manifest.displayDescription();
             content.setSubtitle(StringUtils.isBlank(description) ? manifest.id() : description);
-            var tags = new ArrayList<Tag>(3);
             if (themePack.builtin()) {
-                tags.add(new Tag(i18n("theme_pack.builtin")));
+                content.addTag(i18n("theme_pack.builtin"));
             }
-            tags.add(new Tag(i18n("theme_pack.version", manifest.version())));
-            tags.add(new Tag(i18n("theme_pack.themes", manifest.themes().size())));
-            content.getTags().setAll(tags);
+            content.addTag(i18n("theme_pack.version", manifest.version()));
+            content.addTag(i18n("theme_pack.themes", manifest.themes().size()));
 
             if (themePack.builtin()) {
                 right.getChildren().clear();

@@ -1,12 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack;
 
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.GameInstanceID;
 import org.jackhuang.hmcl.task.Task;
-import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
@@ -25,18 +39,20 @@ public abstract class Modpack {
     private String version;
     private String gameVersion;
     private String description;
+    private transient Charset encoding;
     private ModpackManifest manifest;
 
     public Modpack() {
-        this("", null, null, null, null, null);
+        this("", null, null, null, null, null, null);
     }
 
-    public Modpack(String name, String author, String version, String gameVersion, String description, ModpackManifest manifest) {
+    public Modpack(String name, String author, String version, String gameVersion, String description, Charset encoding, ModpackManifest manifest) {
         this.name = name;
         this.author = author;
         this.version = version;
         this.gameVersion = gameVersion;
         this.description = description;
+        this.encoding = encoding;
         this.manifest = manifest;
     }
 
@@ -85,6 +101,15 @@ public abstract class Modpack {
         return this;
     }
 
+    public Charset getEncoding() {
+        return encoding;
+    }
+
+    public Modpack setEncoding(Charset encoding) {
+        this.encoding = encoding;
+        return this;
+    }
+
     public ModpackManifest getManifest() {
         return manifest;
     }
@@ -94,21 +119,7 @@ public abstract class Modpack {
         return this;
     }
 
-    /// Creates the install task for this modpack.
-    ///
-    /// @param dependencyManager the dependency manager
-    /// @param zipFile           the modpack archive
-    /// @param instanceId        the target instance id
-    /// @param iconUrl           the optional icon URL, or `null`
-    /// @param excludedFiles   keys of optional files the user chose not to install; `null` or empty means
-    ///                          install all files. When non-null, must not contain `null` elements.
-    /// @return the install task
-    public abstract Task<?> getInstallTask(
-            DefaultDependencyManager dependencyManager,
-            Path zipFile,
-            GameInstanceID instanceId,
-            String iconUrl,
-            @Nullable Set<String> excludedFiles);
+    public abstract Task<?> getInstallTask(DefaultDependencyManager dependencyManager, Path zipFile, String name, String iconUrl);
 
     public static boolean acceptFile(String path, List<String> blackList, List<String> whiteList) {
         if (path.isEmpty())

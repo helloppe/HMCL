@@ -1,11 +1,27 @@
-// SPDX-FileCopyrightText: Copyright (C) 2024 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2024 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import javafx.beans.binding.Bindings;
 import javafx.beans.value.ChangeListener;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -13,7 +29,9 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Skin;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import org.jackhuang.hmcl.java.JavaInfo;
@@ -26,7 +44,6 @@ import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.*;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
-import org.jackhuang.hmcl.ui.construct.Tag;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.wizard.SinglePageWizardProvider;
 import org.jackhuang.hmcl.util.FXThread;
@@ -35,7 +52,6 @@ import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.platform.UnsupportedPlatformException;
 import org.jackhuang.hmcl.util.tree.ArchiveFileTree;
-import org.jetbrains.annotations.Nullable;
 import org.jackhuang.hmcl.util.platform.Architecture;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.Platform;
@@ -99,7 +115,7 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
         if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS)
             chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java", "java.exe"));
         chooser.setTitle(i18n("settings.game.java_directory.choose"));
-        Path file = Controllers.showOpenDialog(chooser);
+        Path file = FileUtils.toPath(chooser.showOpenDialog(Controllers.getStage()));
         if (file != null) {
             JavaManager.getAddJavaTask(file).whenComplete(Schedulers.javafx(), exception -> {
                 if (exception != null) {
@@ -166,23 +182,12 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
 
     @FXThread
     private void loadJava(Collection<JavaRuntime> javaRuntimes) {
-        if (javaRuntimes == null) {
-            this.setLoading(true);
-            return;
-        }
-
-        // JavaRuntime equality is path-based. setAll can therefore retain a stale item when the
-        // Java installation at an existing path has been upgraded.
-        this.getItems().clear();
-        this.getItems().addAll(javaRuntimes);
-
-        if (javaRuntimes.isEmpty()) {
-            this.setFailedReason(i18n("java.empty"));
+        if (javaRuntimes != null) {
+            this.setItems(FXCollections.observableArrayList(javaRuntimes));
+            this.setLoading(false);
         } else {
-            this.setFailedReason(null);
+            this.setLoading(true);
         }
-
-        this.setLoading(false);
     }
 
     private static final class JavaPageSkin extends ToolbarListPageSkin<JavaRuntime, JavaManagementPage> {
@@ -221,7 +226,7 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
     }
 
     private static final class JavaItemCell extends ListCell<JavaRuntime> {
-        private final RipplerContainer graphic;
+        private final Node graphic;
         private final Label label = new Label();
         private final TwoLineListItem content;
 
@@ -230,25 +235,33 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
         private final StackPane removeIconPane;
         private final Tooltip removeTooltip = new Tooltip();
 
-        /// Creates a Java runtime cell with interactive tags and independent removal controls.
         JavaItemCell(JFXListView<JavaRuntime> listView) {
-            label.setAlignment(Pos.CENTER);
-            label.setMouseTransparent(true);
-            FXUtils.setLimitWidth(label, 32);
-            FXUtils.setLimitHeight(label, 32);
+            BorderPane root = new BorderPane();
 
-            label.setStyle("-fx-background-color: -monet-secondary-container; -fx-background-radius: 2; -fx-padding: 2; -fx-font-weight: normal; -fx-font-size: 16px;");
+            HBox center = new HBox();
+            center.setMouseTransparent(true);
+            center.setSpacing(8);
+            center.setAlignment(Pos.CENTER_LEFT);
+
+            label.setAlignment(Pos.CENTER);
+            label.setMinSize(24, 24);
+            label.setMaxSize(24, 24);
+            label.setPrefSize(24, 24);
+            label.setStyle("-fx-background-color: -monet-secondary-container; -fx-background-radius: 2; -fx-padding: 2; -fx-font-weight: normal; -fx-font-size: 12px;");
 
             this.content = new TwoLineListItem();
-            content.setLeading(label);
-            TwoLineListItem.setMargin(label, new Insets(0, 8, 0, 0));
+            HBox.setHgrow(content, Priority.ALWAYS);
+
+            BorderPane.setAlignment(content, Pos.CENTER);
+            center.getChildren().setAll(label, content);
+            root.setCenter(center);
 
             HBox right = new HBox();
             right.setAlignment(Pos.CENTER_RIGHT);
             {
                 JFXButton revealButton = FXUtils.newToggleButton4(SVG.FOLDER_OPEN);
                 revealButton.setOnAction(e -> {
-                    @Nullable JavaRuntime java = getItem();
+                    JavaRuntime java = getItem();
                     if (java != null)
                         onReveal(java);
                 });
@@ -257,7 +270,7 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
                 removeButton = new JFXButton();
                 removeButton.getStyleClass().add("toggle-icon4");
                 removeButton.setOnAction(e -> {
-                    @Nullable JavaRuntime java = getItem();
+                    JavaRuntime java = getItem();
                     if (java != null)
                         onRemove(java);
                 });
@@ -271,42 +284,35 @@ public final class JavaManagementPage extends ListPageBase<JavaRuntime> {
 
                 right.getChildren().setAll(revealButton, removeButton);
             }
-            right.setPickOnBounds(false);
-            content.setTrailing(right);
-            content.getStyleClass().add("md-list-cell");
-            content.setPadding(new Insets(8));
+            root.setRight(right);
 
-            this.graphic = new RipplerContainer(content);
-            graphic.setPressFeedbackEnabled(false);
+            root.getStyleClass().add("md-list-cell");
+            root.setPadding(new Insets(8));
+
+            this.graphic = new RipplerContainer(root);
 
             FXUtils.limitCellWidth(listView, this);
         }
 
-        /// Updates the runtime details and reuses the architecture tag when the item changes.
         @Override
-        protected void updateItem(@Nullable JavaRuntime item, boolean empty) {
-            @Nullable JavaRuntime oldItem = getItem();
-            boolean oldEmpty = isEmpty();
-
+        protected void updateItem(JavaRuntime item, boolean empty) {
+            JavaRuntime oldItem = getItem();
             super.updateItem(item, empty);
-
-            if (oldItem == item && oldEmpty == empty) return;
-
-            this.graphic.resetFeedback();
-
             if (empty || item == null) {
                 setGraphic(null);
             } else {
                 int parsedVersion = item.getParsedVersion();
                 label.setText(parsedVersion >= 0 ? String.valueOf(parsedVersion) : "?");
 
-                @Nullable String vendor = JavaInfo.normalizeVendor(item.getVendor());
-
-                content.setTitle((vendor != null ? vendor : i18n("message.unknown")) + " " + (item.isJDK() ? "JDK" : "JRE") + " " + item.getVersion());
+                content.setTitle((item.isJDK() ? "JDK" : "JRE") + " " + item.getVersion());
                 content.setSubtitle(item.getBinary().toString());
 
                 if (oldItem != item) {
-                    content.getTags().setAll(new Tag(item.getArchitecture().getDisplayName()));
+                    content.getTags().clear();
+                    content.addTag(i18n("java.info.architecture") + ": " + item.getArchitecture().getDisplayName());
+                    String vendor = JavaInfo.normalizeVendor(item.getVendor());
+                    if (vendor != null)
+                        content.addTag(i18n("java.info.vendor") + ": " + vendor);
                 }
 
                 SVG newRemoveIcon = item.isManaged() ? SVG.DELETE_FOREVER : SVG.DELETE;

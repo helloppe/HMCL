@@ -1,14 +1,28 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack.mcbbs;
 
 import com.google.gson.JsonParseException;
-import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.addon.mod.ModManager;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.game.DefaultGameInstance;
-import org.jackhuang.hmcl.modpack.ModpackCompletionException;
+import org.jackhuang.hmcl.game.DefaultGameRepository;
+import org.jackhuang.hmcl.addon.mod.ModManager;
 import org.jackhuang.hmcl.modpack.ModpackConfiguration;
+import org.jackhuang.hmcl.modpack.ModpackCompletionException;
 import org.jackhuang.hmcl.modpack.curse.CurseMetaMod;
 import org.jackhuang.hmcl.task.*;
 import org.jackhuang.hmcl.util.DigestUtils;
@@ -16,7 +30,6 @@ import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.FileNotFoundException;
@@ -35,54 +48,34 @@ import static org.jackhuang.hmcl.util.Lang.wrap;
 import static org.jackhuang.hmcl.util.Lang.wrapConsumer;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Completes and updates files for an installed MCBBS modpack.
-@NotNullByDefault
 public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
 
-    /// The dependency manager used to resolve and download remote files.
     private final DefaultDependencyManager dependency;
-
-    /// The fixed registered instance completed by this task.
-    private final DefaultGameInstance instance;
-
-    /// The mod manager associated with [#instance].
+    private final DefaultGameRepository repository;
     private final ModManager modManager;
-
-    /// The fixed configuration-file path for [#instance].
+    private final String version;
     private final Path configurationFile;
+    private ModpackConfiguration<McbbsModpackManifest> configuration;
+    private McbbsModpackManifest manifest;
+    private final List<Task<?>> dependencies = new ArrayList<>();
 
-    /// The configuration supplied by the caller or loaded from disk.
-    private @Nullable ModpackConfiguration<McbbsModpackManifest> configuration;
+    private final AtomicBoolean allNameKnown = new AtomicBoolean(true);
+    private final AtomicInteger finished = new AtomicInteger(0);
+    private final AtomicBoolean notFound = new AtomicBoolean(false);
 
-    /// The local or downloaded manifest currently being processed.
-    private @Nullable McbbsModpackManifest manifest;
-
-    /// Creates a task that loads the modpack configuration from disk.
-    ///
-    /// @param dependencyManager the dependency manager
-    /// @param instance          the registered instance to complete
-    public McbbsModpackCompletionTask(DefaultDependencyManager dependencyManager, DefaultGameInstance instance) {
-        this(dependencyManager, instance, null);
+    public McbbsModpackCompletionTask(DefaultDependencyManager dependencyManager, String version) {
+        this(dependencyManager, version, null);
     }
 
-    /// Creates a task using an optional preloaded modpack configuration.
-    ///
-    /// @param dependencyManager the dependency manager
-    /// @param instance          the registered instance to complete
-    /// @param configuration     the configuration, or `null` to read it from disk
-    public McbbsModpackCompletionTask(
-            DefaultDependencyManager dependencyManager,
-            DefaultGameInstance instance,
-            @Nullable ModpackConfiguration<McbbsModpackManifest> configuration) {
-        dependencyManager.validateGameInstance(instance);
+    public McbbsModpackCompletionTask(DefaultDependencyManager dependencyManager, String version, ModpackConfiguration<McbbsModpackManifest> configuration) {
         this.dependency = dependencyManager;
-        this.instance = instance;
-        this.modManager = instance.getModManager();
-        this.configurationFile = instance.getModpackConfigurationFile();
+        this.repository = dependencyManager.getGameRepository();
+        this.modManager = repository.getModManager(version);
+        this.version = version;
+        this.configurationFile = repository.getModpackConfiguration(version);
         this.configuration = configuration;
 
         setStage("hmcl.modpack.download");
-        setSignificance(TaskSignificance.MODERATE);
     }
 
     @Override
@@ -106,7 +99,7 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
                     throw new CustomException();
                 }
             })).thenComposeAsync(wrap(unused1 -> {
-                return executor.one(new GetTask(WebURL.parse(manifest.getFileApi() + "/manifest.json")));
+                return executor.one(new GetTask(manifest.getFileApi() + "/manifest.json"));
             })).thenComposeAsync(wrap(remoteManifestJson -> {
                 McbbsModpackManifest remoteManifest;
                 // We needs to update modpack from online server.
@@ -116,7 +109,7 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
                     throw new IOException("Unable to parse server manifest.json from " + manifest.getFileApi(), e);
                 }
 
-                Path rootPath = instance.getInstanceRoot();
+                Path rootPath = repository.getVersionRoot(version);
                 Files.createDirectories(rootPath);
 
                 Map<McbbsModpackManifest.File, McbbsModpackManifest.File> localFiles = manifest.getFiles().stream().collect(Collectors.toMap(Function.identity(), Function.identity()));
@@ -178,7 +171,8 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
                 manifest = remoteManifest.setFiles(newFiles);
                 return executor.all(tasks.stream().filter(Objects::nonNull).collect(Collectors.toList()));
             })).thenAcceptAsync(wrapConsumer(unused1 -> {
-                JsonUtils.writeToJsonFile(configurationFile,
+                Path manifestFile = repository.getModpackConfiguration(version);
+                JsonUtils.writeToJsonFile(manifestFile,
                         new ModpackConfiguration<>(manifest, this.configuration.getType(), this.manifest.getName(), this.manifest.getVersion(),
                                 this.manifest.getFiles().stream()
                                         .flatMap(file -> file instanceof McbbsModpackManifest.AddonFile
@@ -205,12 +199,12 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
                                                 McbbsModpackManifest.CurseFile file = (McbbsModpackManifest.CurseFile) rawFile;
                                                 if (StringUtils.isBlank(file.getFileName())) {
                                                     try {
-                                                        return file.withFileName(NetworkUtils.detectFileName(WebURL.parse(file.getUrl())));
+                                                        return file.withFileName(NetworkUtils.detectFileName(NetworkUtils.toURI(file.getUrl())));
                                                     } catch (IOException e) {
                                                         try {
                                                             String result = NetworkUtils.doGet(String.format("https://cursemeta.dries007.net/%d/%d.json", file.getProjectID(), file.getFileID()));
                                                             CurseMetaMod mod = JsonUtils.fromNonNullJson(result, CurseMetaMod.class);
-                                                            return file.withFileName(mod.fileNameOnDisk()).withURL(mod.downloadURL());
+                                                            return file.withFileName(mod.getFileNameOnDisk()).withURL(mod.getDownloadURL());
                                                         } catch (FileNotFoundException fof) {
                                                             LOG.warning("Could not query cursemeta for deleted mods: " + file.getUrl(), fof);
                                                             notFound.set(true);
@@ -219,7 +213,7 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
                                                             try {
                                                                 String result = NetworkUtils.doGet(String.format("https://addons-ecs.forgesvc.net/api/v2/addon/%d/file/%d", file.getProjectID(), file.getFileID()));
                                                                 CurseMetaMod mod = JsonUtils.fromNonNullJson(result, CurseMetaMod.class);
-                                                                return file.withFileName(mod.fileName()).withURL(mod.downloadURL());
+                                                                return file.withFileName(mod.getFileName()).withURL(mod.getDownloadURL());
                                                             } catch (FileNotFoundException fof) {
                                                                 LOG.warning("Could not query forgesvc for deleted mods: " + file.getUrl(), fof);
                                                                 notFound.set(true);
@@ -276,9 +270,10 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
         }));
     }
 
-    private @Nullable Path getFilePath(McbbsModpackManifest.File file) {
+    @Nullable
+    private Path getFilePath(McbbsModpackManifest.File file) {
         if (file instanceof McbbsModpackManifest.AddonFile) {
-            return instance.getRunDirectory().resolve(((McbbsModpackManifest.AddonFile) file).getPath());
+            return modManager.getRepository().getRunDirectory(modManager.getInstanceId()).resolve(((McbbsModpackManifest.AddonFile) file).getPath());
         } else if (file instanceof McbbsModpackManifest.CurseFile) {
             String fileName = ((McbbsModpackManifest.CurseFile) file).getFileName();
             if (fileName == null) return null;
@@ -288,7 +283,7 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
         }
     }
 
-    private @Nullable String getFileHash(McbbsModpackManifest.File file) {
+    private String getFileHash(McbbsModpackManifest.File file) {
         if (file instanceof McbbsModpackManifest.AddonFile) {
             return ((McbbsModpackManifest.AddonFile) file).getHash();
         } else {
@@ -296,7 +291,7 @@ public class McbbsModpackCompletionTask extends CompletableFutureTask<Void> {
         }
     }
 
-    private @Nullable Task<?> downloadFile(McbbsModpackManifest remoteManifest, McbbsModpackManifest.File file) throws IOException {
+    private Task<?> downloadFile(McbbsModpackManifest remoteManifest, McbbsModpackManifest.File file) throws IOException {
         if (file instanceof McbbsModpackManifest.AddonFile) {
             McbbsModpackManifest.AddonFile addonFile = (McbbsModpackManifest.AddonFile) file;
             return new FileDownloadTask(

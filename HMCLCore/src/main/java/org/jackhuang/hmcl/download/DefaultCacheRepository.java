@@ -1,8 +1,24 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.download;
 
 import com.google.gson.JsonParseException;
+import org.jackhuang.hmcl.download.game.LibraryDownloadTask;
 import org.jackhuang.hmcl.game.Library;
 import org.jackhuang.hmcl.game.LibraryDownloadInfo;
 import org.jackhuang.hmcl.util.CacheRepository;
@@ -13,7 +29,6 @@ import org.jackhuang.hmcl.util.gson.Validation;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -26,7 +41,6 @@ import java.util.concurrent.locks.Lock;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Caches verified library files and resolves cached or legacy library locations.
 public class DefaultCacheRepository extends CacheRepository {
     private Path librariesDir;
     private Path indexFile;
@@ -65,15 +79,18 @@ public class DefaultCacheRepository extends CacheRepository {
         }
     }
 
-    /// Caches a library only when its download SHA-1 or nonempty legacy checksum list verifies the file.
-    /// Already indexed libraries are skipped; I/O failures are logged without propagating.
-    ///
-    /// @param library the library metadata used for validation
-    /// @param jar the local file to verify and cache
+    /**
+     * Try to cache the library given.
+     * This library will be cached only if it is verified.
+     * If cannot be verified, the library will not be cached.
+     *
+     * @param library the library being cached
+     * @param jar     the file of library
+     */
     public void tryCacheLibrary(Library library, Path jar) {
         lock.readLock().lock();
         try {
-            if (index.libraries().stream().anyMatch(it -> library.name().equals(it.name())))
+            if (index.libraries().stream().anyMatch(it -> library.getName().equals(it.name())))
                 return;
         } finally {
             lock.readLock().unlock();
@@ -81,28 +98,31 @@ public class DefaultCacheRepository extends CacheRepository {
 
         try {
             LibraryDownloadInfo info = library.getDownload();
-            @Nullable String hash = info.getSha1();
+            String hash = info.getSha1();
             if (hash != null) {
                 String checksum = DigestUtils.digestToString("SHA-1", jar);
                 if (hash.equalsIgnoreCase(checksum))
                     cacheLibrary(library, jar, false);
-            } else if (library.checksums() != null && !library.checksums().isEmpty()
-                    && library.validateChecksums(jar)) {
-                cacheLibrary(library, jar, true);
+            } else if (library.getChecksums() != null && !library.getChecksums().isEmpty()) {
+                if (LibraryDownloadTask.checksumValid(jar, library.getChecksums()))
+                    cacheLibrary(library, jar, true);
+            } else {
+                // or we will not cache the library
             }
         } catch (IOException e) {
             LOG.warning("Unable to calc hash value of file " + jar, e);
         }
     }
 
-    /// Finds a verified cached library, falling back to the legacy common-directory layout.
-    /// Legacy files without checksum metadata remain usable without being added to the cache.
-    ///
-    /// @param library the library to locate
-    /// @return its cached or legacy path, or empty when no usable file is found
+    /**
+     * Get the path of cached library, empty if not cached
+     *
+     * @param library the library we check if cached.
+     * @return the cached path if exists, otherwise empty
+     */
     public Optional<Path> getLibrary(Library library) {
         LibraryDownloadInfo info = library.getDownload();
-        @Nullable String hash = info.getSha1();
+        String hash = info.getSha1();
 
         if (fileExists(SHA1, hash))
             return Optional.of(getFile(SHA1, hash));
@@ -113,13 +133,13 @@ public class DefaultCacheRepository extends CacheRepository {
         try {
             // check if this library is from Forge
             List<LibraryIndex> libraries = index.libraries().stream()
-                    .filter(it -> it.name().equals(library.name()))
+                    .filter(it -> it.name().equals(library.getName()))
                     .toList();
             for (LibraryIndex libIndex : libraries) {
                 if (fileExists(SHA1, libIndex.hash())) {
                     Path file = getFile(SHA1, libIndex.hash());
                     if (libIndex.type().equalsIgnoreCase(LibraryIndex.TYPE_FORGE)) {
-                        if (library.validateChecksums(file))
+                        if (LibraryDownloadTask.checksumValid(file, library.getChecksums()))
                             return Optional.of(file);
                     }
                 }
@@ -136,13 +156,11 @@ public class DefaultCacheRepository extends CacheRepository {
                     String checksum = DigestUtils.digestToString("SHA-1", jar);
                     if (hash.equalsIgnoreCase(checksum))
                         return Optional.of(restore(jar, () -> cacheLibrary(library, jar, false)));
+                } else if (library.getChecksums() != null && !library.getChecksums().isEmpty()) {
+                    if (LibraryDownloadTask.checksumValid(jar, library.getChecksums()))
+                        return Optional.of(restore(jar, () -> cacheLibrary(library, jar, true)));
                 } else {
-                    if (library.checksums() != null && !library.checksums().isEmpty()) {
-                        if (library.validateChecksums(jar))
-                            return Optional.of(restore(jar, () -> cacheLibrary(library, jar, true)));
-                    } else {
-                        return Optional.of(jar);
-                    }
+                    return Optional.of(jar);
                 }
             } catch (IOException e) {
                 // we cannot check the hashcode or unable to move file.
@@ -172,7 +190,7 @@ public class DefaultCacheRepository extends CacheRepository {
         Lock writeLock = lock.writeLock();
         writeLock.lock();
         try {
-            LibraryIndex libIndex = new LibraryIndex(library.name(), hash, forge ? LibraryIndex.TYPE_FORGE : LibraryIndex.TYPE_JAR);
+            LibraryIndex libIndex = new LibraryIndex(library.getName(), hash, forge ? LibraryIndex.TYPE_FORGE : LibraryIndex.TYPE_JAR);
             index.libraries().add(libIndex);
             saveIndex();
         } finally {

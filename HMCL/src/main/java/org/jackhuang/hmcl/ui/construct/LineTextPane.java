@@ -1,12 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.construct;
 
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.StringPropertyBase;
 import javafx.scene.control.Label;
 import org.jackhuang.hmcl.ui.FXUtils;
-import org.jetbrains.annotations.Nullable;
 
 /// @author Glavo
 public final class LineTextPane extends LineComponent {
@@ -17,44 +31,38 @@ public final class LineTextPane extends LineComponent {
         this.getStyleClass().addAll(DEFAULT_STYLE_CLASS);
     }
 
-    /// The lazily created text displayed to the right of the title.
-    private @Nullable StringProperty text;
+    private StringProperty text;
 
-    /// Returns the right-side text property; null and empty text omit the label.
     public StringProperty textProperty() {
         if (text == null) {
             text = new StringPropertyBase() {
-                /// The reusable right-side label, created when nonempty text is assigned.
-                private @Nullable Label rightLabel;
+                private Label rightLabel;
 
-                /// Returns the pane owning this property.
                 @Override
                 public Object getBean() {
                     return LineTextPane.this;
                 }
 
-                /// Returns the property name.
                 @Override
                 public String getName() {
                     return "text";
                 }
 
-                /// Updates the label and attaches it directly to the row while nonempty.
                 @Override
                 protected void invalidated() {
-                    @Nullable String text = get();
+                    String text = get();
                     if (text != null && !text.isEmpty()) {
                         if (rightLabel == null) {
                             rightLabel = FXUtils.newSafeTruncatedLabel();
                             FXUtils.copyOnDoubleClick(rightLabel);
                         }
                         rightLabel.setText(text);
-                        setTrailing(rightLabel);
+                        setNode(IDX_TRAILING, rightLabel);
                     } else {
                         if (rightLabel != null)
                             rightLabel.setText(null);
 
-                        setTrailing(null);
+                        setNode(IDX_TRAILING, null);
                     }
                 }
             };
@@ -62,13 +70,11 @@ public final class LineTextPane extends LineComponent {
         return text;
     }
 
-    /// Returns the right-side text, or null if none is assigned.
-    public @Nullable String getText() {
+    public String getText() {
         return textProperty().get();
     }
 
-    /// Sets the right-side text; null and empty text omit the label.
-    public void setText(@Nullable String text) {
+    public void setText(String text) {
         textProperty().set(text);
     }
 }

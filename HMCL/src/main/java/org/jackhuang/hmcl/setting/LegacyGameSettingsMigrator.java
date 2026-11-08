@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.setting;
 
 import com.google.gson.JsonElement;
@@ -58,22 +73,22 @@ public final class LegacyGameSettingsMigrator {
     }
 
     /// Legacy `VersionIconType` ordinal order used by old local settings.
-    private static final GameInstanceIconType @Unmodifiable [] LEGACY_VERSION_ICON_TYPES = {
-            GameInstanceIconType.DEFAULT,
-            GameInstanceIconType.GRASS,
-            GameInstanceIconType.CHEST,
-            GameInstanceIconType.CHICKEN,
-            GameInstanceIconType.COMMAND,
-            GameInstanceIconType.OPTIFINE,
-            GameInstanceIconType.CRAFT_TABLE,
-            GameInstanceIconType.FABRIC,
-            GameInstanceIconType.FORGE,
-            GameInstanceIconType.NEO_FORGE,
-            GameInstanceIconType.FURNACE,
-            GameInstanceIconType.QUILT,
-            GameInstanceIconType.APRIL_FOOLS,
-            GameInstanceIconType.CLEANROOM,
-            GameInstanceIconType.LEGACY_FABRIC
+    private static final VersionIconType @Unmodifiable [] LEGACY_VERSION_ICON_TYPES = {
+            VersionIconType.DEFAULT,
+            VersionIconType.GRASS,
+            VersionIconType.CHEST,
+            VersionIconType.CHICKEN,
+            VersionIconType.COMMAND,
+            VersionIconType.OPTIFINE,
+            VersionIconType.CRAFT_TABLE,
+            VersionIconType.FABRIC,
+            VersionIconType.FORGE,
+            VersionIconType.NEO_FORGE,
+            VersionIconType.FURNACE,
+            VersionIconType.QUILT,
+            VersionIconType.APRIL_FOOLS,
+            VersionIconType.CLEANROOM,
+            VersionIconType.LEGACY_FABRIC
     };
 
     /// Legacy `JavaVersionType` ordinal order used by old game settings.
@@ -115,14 +130,14 @@ public final class LegacyGameSettingsMigrator {
     /// @return the migrated instance setting, or `null` when no legacy file can be migrated
     public static @Nullable InstanceMigrationResult migrateInstanceGameSettings(
             HMCLGameRepository repository,
-            GameInstanceID instanceId,
+            String instanceId,
             @Nullable GameSettingsPresetID parent) {
-        Path instanceRoot = repository.getLayout().getInstanceRoot(instanceId);
+        Path instanceRoot = repository.getVersionRoot(instanceId);
         Path file = instanceRoot.resolve(LEGACY_INSTANCE_SETTINGS_FILENAME);
         if (!Files.exists(file)) {
             return null;
         }
-        Path receiptLocation = repository.getLayout().getInstanceStateDirectory(instanceId)
+        Path receiptLocation = repository.getInstanceStateDirectory(instanceId)
                 .resolve(LEGACY_INSTANCE_SETTINGS_MIGRATION_RECEIPT_FILENAME);
         if (MigrationReceipt.matches(receiptLocation, file)) {
             LOG.info("Skipping already migrated legacy version setting " + file);
@@ -256,7 +271,7 @@ public final class LegacyGameSettingsMigrator {
                     GameSettings.PROPERTY_NOT_PATCH_NATIVES,
                     GameSettings.PROPERTY_USE_CUSTOM_NATIVES,
                     GameSettings.PROPERTY_NATIVES_DIRECTORY,
-                    GameSettings.PROPERTY_USE_NATIVE_GLFW_OR_SDL,
+                    GameSettings.PROPERTY_USE_NATIVE_GLFW,
                     GameSettings.PROPERTY_USE_NATIVE_OPENAL
             ));
         }
@@ -327,7 +342,7 @@ public final class LegacyGameSettingsMigrator {
         boolean useCustomNatives = isLegacyCustomNativesDirectory(source);
         target.useCustomNativesProperty().setValue(useCustomNatives);
         target.nativesDirectoryProperty().setValue(useCustomNatives ? JsonUtils.getString(source, "nativesDir", "") : "");
-        target.useNativeGLFWorSDLProperty().setValue(JsonUtils.getBoolean(source, "useNativeGLFW", false));
+        target.useNativeGLFWProperty().setValue(JsonUtils.getBoolean(source, "useNativeGLFW", false));
         target.useNativeOpenALProperty().setValue(JsonUtils.getBoolean(source, "useNativeOpenAL", false));
     }
 
@@ -473,10 +488,10 @@ public final class LegacyGameSettingsMigrator {
     }
 
     /// Parses the legacy icon selection with frozen ordinal order.
-    private static GameInstanceIconType parseLegacyVersionIconType(@Nullable JsonObject source) {
+    private static VersionIconType parseLegacyVersionIconType(@Nullable JsonObject source) {
         JsonPrimitive primitive = JsonUtils.getPrimitive(source, "versionIcon");
         if (primitive == null) {
-            return GameInstanceIconType.DEFAULT;
+            return VersionIconType.DEFAULT;
         }
 
         try {
@@ -484,11 +499,11 @@ public final class LegacyGameSettingsMigrator {
                 int index = primitive.getAsInt();
                 return index >= 0 && index < LEGACY_VERSION_ICON_TYPES.length
                         ? LEGACY_VERSION_ICON_TYPES[index]
-                        : GameInstanceIconType.DEFAULT;
+                        : VersionIconType.DEFAULT;
             }
 
             String value = primitive.getAsString();
-            for (GameInstanceIconType iconType : LEGACY_VERSION_ICON_TYPES) {
+            for (VersionIconType iconType : LEGACY_VERSION_ICON_TYPES) {
                 if (iconType.name().equalsIgnoreCase(value)) {
                     return iconType;
                 }
@@ -496,7 +511,7 @@ public final class LegacyGameSettingsMigrator {
         } catch (RuntimeException ignored) {
         }
 
-        return GameInstanceIconType.DEFAULT;
+        return VersionIconType.DEFAULT;
     }
 
     /// Reads an enum property from either ordinal or name.

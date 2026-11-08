@@ -1,14 +1,27 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack.server;
 
 import com.google.gson.JsonParseException;
-import org.glavo.url.WebURL;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
 import org.jackhuang.hmcl.download.GameBuilder;
-import org.jackhuang.hmcl.game.DefaultGameInstance;
+import org.jackhuang.hmcl.game.DefaultGameRepository;
 import org.jackhuang.hmcl.addon.LocalAddonManager;
-import org.jackhuang.hmcl.game.GameComponentType;
 import org.jackhuang.hmcl.modpack.ModpackConfiguration;
 import org.jackhuang.hmcl.task.FileDownloadTask;
 import org.jackhuang.hmcl.task.GetTask;
@@ -16,8 +29,6 @@ import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.DigestUtils;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
-import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,57 +39,30 @@ import java.util.stream.Collectors;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Synchronizes an installed server modpack with its remote manifest.
-@NotNullByDefault
 public class ServerModpackCompletionTask extends Task<Void> {
 
-    /// The dependency manager used for downloads and game-component updates.
     private final DefaultDependencyManager dependencyManager;
-
-    /// The fixed registered instance completed by this task.
-    private final DefaultGameInstance instance;
-
-    /// The fixed configuration-file path for [#instance].
-    private final Path configurationFile;
-
-    /// The installed configuration supplied by the caller or loaded from disk.
-    private @Nullable ModpackConfiguration<ServerModpackManifest> manifest;
-
-    /// The remote-manifest request created during [#preExecute()].
-    private @Nullable GetTask dependent;
-
-    /// The remote manifest parsed during [#execute()].
-    private @Nullable ServerModpackManifest remoteManifest;
-
-    /// Download and game-builder tasks produced during [#execute()].
+    private final DefaultGameRepository repository;
+    private final String version;
+    private ModpackConfiguration<ServerModpackManifest> manifest;
+    private GetTask dependent;
+    private ServerModpackManifest remoteManifest;
     private final List<Task<?>> dependencies = new ArrayList<>();
 
-    /// Creates a task that loads the installed configuration from disk.
-    ///
-    /// @param dependencyManager the dependency manager
-    /// @param instance          the registered instance to complete
-    public ServerModpackCompletionTask(DefaultDependencyManager dependencyManager, DefaultGameInstance instance) {
-        this(dependencyManager, instance, null);
+    public ServerModpackCompletionTask(DefaultDependencyManager dependencyManager, String version) {
+        this(dependencyManager, version, null);
     }
 
-    /// Creates a task using an optional preloaded configuration.
-    ///
-    /// @param dependencyManager the dependency manager
-    /// @param instance          the registered instance to complete
-    /// @param manifest          the installed configuration, or `null` to read it from disk
-    public ServerModpackCompletionTask(
-            DefaultDependencyManager dependencyManager,
-            DefaultGameInstance instance,
-            @Nullable ModpackConfiguration<ServerModpackManifest> manifest) {
-        dependencyManager.validateGameInstance(instance);
+    public ServerModpackCompletionTask(DefaultDependencyManager dependencyManager, String version, ModpackConfiguration<ServerModpackManifest> manifest) {
         this.dependencyManager = dependencyManager;
-        this.instance = instance;
-        this.configurationFile = instance.getModpackConfigurationFile();
+        this.repository = dependencyManager.getGameRepository();
+        this.version = version;
 
         if (manifest == null) {
             try {
-                if (Files.exists(configurationFile)) {
-                    this.manifest = JsonUtils.fromJsonFile(configurationFile, ModpackConfiguration.typeOf(ServerModpackManifest.class));
+                Path manifestFile = repository.getModpackConfiguration(version);
+                if (Files.exists(manifestFile)) {
+                    this.manifest = JsonUtils.fromJsonFile(manifestFile, ModpackConfiguration.typeOf(ServerModpackManifest.class));
                 }
             } catch (Exception e) {
                 LOG.warning("Unable to read Server modpack manifest.json", e);
@@ -88,7 +72,6 @@ public class ServerModpackCompletionTask extends Task<Void> {
         }
 
         setStage("hmcl.modpack.download");
-        setSignificance(TaskSignificance.MODERATE);
     }
 
     @Override
@@ -99,7 +82,7 @@ public class ServerModpackCompletionTask extends Task<Void> {
     @Override
     public void preExecute() throws Exception {
         if (manifest == null || StringUtils.isBlank(manifest.getManifest().getFileApi())) return;
-        dependent = new GetTask(WebURL.parse(manifest.getManifest().getFileApi() + "/server-manifest.json"));
+        dependent = new GetTask(manifest.getManifest().getFileApi() + "/server-manifest.json");
     }
 
     @Override
@@ -129,18 +112,15 @@ public class ServerModpackCompletionTask extends Task<Void> {
         Map<String, String> oldAddons = toMap(manifest.getManifest().getAddons());
         Map<String, String> newAddons = toMap(remoteManifest.getAddons());
         if (!Objects.equals(oldAddons, newAddons)) {
-            try (GameBuilder builder = dependencyManager.newGameBuilder(instance)) {
-                for (ServerModpackManifest.Addon addon : remoteManifest.getAddons()) {
-                    @Nullable GameComponentType componentType = GameComponentType.fromPatchId(addon.getId());
-                    if (componentType != null)
-                        builder.component(componentType, addon.getVersion());
-                }
-
-                dependencies.add(builder.buildAsync());
+            GameBuilder builder = dependencyManager.gameBuilder().name(version);
+            for (ServerModpackManifest.Addon addon : remoteManifest.getAddons()) {
+                builder.version(addon.getId(), addon.getVersion());
             }
+
+            dependencies.add(builder.buildAsync());
         }
 
-        Path rootPath = instance.getInstanceRoot().toAbsolutePath().normalize();
+        Path rootPath = repository.getVersionRoot(version).toAbsolutePath().normalize();
         Map<String, ModpackConfiguration.FileInformation> files = manifest.getManifest().getFiles().stream()
                 .collect(Collectors.toMap(ModpackConfiguration.FileInformation::getPath,
                         Function.identity()));
@@ -148,7 +128,7 @@ public class ServerModpackCompletionTask extends Task<Void> {
         Set<String> remoteFiles = remoteManifest.getFiles().stream().map(ModpackConfiguration.FileInformation::getPath)
                 .collect(Collectors.toSet());
 
-        Path runDirectory = instance.getRunDirectory().toAbsolutePath().normalize();
+        Path runDirectory = repository.getRunDirectory(version).toAbsolutePath().normalize();
         Path modsDirectory = runDirectory.resolve("mods");
 
         int total = 0;
@@ -212,7 +192,8 @@ public class ServerModpackCompletionTask extends Task<Void> {
     @Override
     public void postExecute() throws Exception {
         if (manifest == null || StringUtils.isBlank(manifest.getManifest().getFileApi())) return;
-        Files.createDirectories(configurationFile.getParent());
-        JsonUtils.writeToJsonFile(configurationFile, new ModpackConfiguration<>(remoteManifest, this.manifest.getType(), this.manifest.getName(), this.manifest.getVersion(), remoteManifest.getFiles()));
+        Path manifestFile = repository.getModpackConfiguration(version);
+        Files.createDirectories(manifestFile.getParent());
+        JsonUtils.writeToJsonFile(manifestFile, new ModpackConfiguration<>(remoteManifest, this.manifest.getType(), this.manifest.getName(), this.manifest.getVersion(), remoteManifest.getFiles()));
     }
 }

@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.auth.yggdrasil;
 
 import com.google.gson.JsonObject;
@@ -21,6 +36,7 @@ public abstract class YggdrasilAccount extends ClassicAccount {
     protected final UUID profileID;
     protected final String loginName;
 
+    private boolean authenticated = false;
     private YggdrasilSession session;
 
     protected YggdrasilAccount(AccountID accountID, YggdrasilService service, String loginName, YggdrasilSession session) {
@@ -56,6 +72,7 @@ public abstract class YggdrasilAccount extends ClassicAccount {
         }
 
         profileID = session.getSelectedProfile().getId();
+        authenticated = true;
 
         addProfilePropertiesListener();
     }
@@ -84,33 +101,37 @@ public abstract class YggdrasilAccount extends ClassicAccount {
         return session.getSelectedProfile().getId();
     }
 
-    /// Returns authentication information after validating the current token.
-    /// Refreshes the session if the profile name is missing or the token is invalid.
     @Override
     public synchronized AuthInfo logIn() throws AuthenticationException {
-        if (!session.hasProfileName() || !service.validate(session.getAccessToken(), session.getClientToken())) {
-            YggdrasilSession acquiredSession;
-            try {
-                acquiredSession = service.refresh(session.getAccessToken(), session.getClientToken(), null);
-            } catch (RemoteAuthenticationException e) {
-                if ("ForbiddenOperationException".equals(e.getRemoteName())) {
-                    throw new CredentialExpiredException(e);
-                } else {
-                    throw e;
+        if (!authenticated || !session.hasProfileName()) {
+            if (session.hasProfileName() && service.validate(session.getAccessToken(), session.getClientToken())) {
+                authenticated = true;
+            } else {
+                YggdrasilSession acquiredSession;
+                try {
+                    acquiredSession = service.refresh(session.getAccessToken(), session.getClientToken(), null);
+                } catch (RemoteAuthenticationException e) {
+                    if ("ForbiddenOperationException".equals(e.getRemoteName())) {
+                        throw new CredentialExpiredException(e);
+                    } else {
+                        throw e;
+                    }
                 }
-            }
-            if (acquiredSession.getSelectedProfile() == null ||
-                    !acquiredSession.getSelectedProfile().getId().equals(profileID)) {
-                throw new ServerResponseMalformedException("Selected profile changed");
-            }
-            if (!acquiredSession.hasProfileName()) {
-                throw new ServerResponseMalformedException("Profile name is missing");
-            }
+                if (acquiredSession.getSelectedProfile() == null ||
+                        !acquiredSession.getSelectedProfile().getId().equals(profileID)) {
+                    throw new ServerResponseMalformedException("Selected profile changed");
+                }
+                if (!acquiredSession.hasProfileName()) {
+                    throw new ServerResponseMalformedException("Profile name is missing");
+                }
 
-            session = acquiredSession;
+                session = acquiredSession;
 
-            invalidate();
+                authenticated = true;
+                invalidate();
+            }
         }
+
         return session.toAuthInfo();
     }
 
@@ -140,6 +161,7 @@ public abstract class YggdrasilAccount extends ClassicAccount {
             session = acquiredSession;
         }
 
+        authenticated = true;
         invalidate();
         return session.toAuthInfo();
     }
@@ -174,6 +196,7 @@ public abstract class YggdrasilAccount extends ClassicAccount {
 
     @Override
     public void clearCache() {
+        authenticated = false;
         service.getProfileRepository().invalidate(profileID);
     }
 

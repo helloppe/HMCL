@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.addon.resourcepack;
 
 import javafx.scene.image.Image;
@@ -8,6 +23,7 @@ import org.jackhuang.hmcl.addon.meta.PackMcMeta;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
@@ -16,7 +32,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
-public sealed abstract class ResourcePackFile extends LocalAddonFile<ResourcePackFile> permits ResourcePackFolder, ResourcePackZipFile {
+public sealed abstract class ResourcePackFile extends LocalAddonFile implements Comparable<ResourcePackFile> permits ResourcePackFolder, ResourcePackZipFile {
     static ResourcePackFile fromFile(ResourcePackManager manager, Path path) throws IOException {
         if (isFileResourcePack(path)) {
             return Files.isRegularFile(path) ? new ResourcePackZipFile(manager, path) : new ResourcePackFolder(manager, path);
@@ -98,16 +114,21 @@ public sealed abstract class ResourcePackFile extends LocalAddonFile<ResourcePac
 
     @Nullable
     @Contract(pure = true)
-    public abstract PackMcMeta.PackInfo getPackInfo();
+    public abstract PackMcMeta getMeta();
 
     @Nullable
     public LocalAddonFile.Description getDescription() {
-        if (getPackInfo() == null) return null;
-        return getPackInfo().description();
+        if (getMeta() == null || getMeta().pack() == null) return null;
+        return getMeta().pack().description();
     }
 
     // 64*64
-    public abstract @Nullable Image loadIcon();
+    public abstract @Nullable Image getIcon();
+
+    @Override
+    public int compareTo(@NotNull ResourcePackFile other) {
+        return this.fileNameWithExtension.compareTo(other.fileNameWithExtension);
+    }
 
     public enum Compatibility {
         COMPATIBLE,

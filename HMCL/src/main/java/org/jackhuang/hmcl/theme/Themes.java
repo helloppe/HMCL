@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2025 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2025 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.theme;
 
 import com.sun.jna.Pointer;
@@ -9,7 +24,8 @@ import javafx.beans.binding.Bindings;
 import javafx.beans.binding.BooleanBinding;
 import javafx.beans.binding.ObjectBinding;
 import javafx.beans.binding.ObjectExpression;
-import javafx.beans.property.*;
+import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.SetChangeListener;
@@ -64,7 +80,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -76,9 +91,6 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Provides the current launcher MonetFX theme and derived color bindings.
 @NotNullByDefault
 public final class Themes {
-    /// The stage property retaining the listener for native appearance updates and marking completed registration.
-    private static final String NATIVE_DARK_MODE_LISTENER = "Themes.applyNativeDarkMode.listener";
-
     /// The seed color extracted from the last loaded wallpaper image.
     private static final ReadOnlyObjectWrapper<@Nullable ThemeColor> wallpaperThemeColor = new ReadOnlyObjectWrapper<>();
 
@@ -271,9 +283,6 @@ public final class Themes {
             colorScheme
     );
 
-    /// Whether the current color scheme brightness is inherited from system.
-    private static final ReadOnlyBooleanWrapper autoBrightness = new ReadOnlyBooleanWrapper();
-
     /// The current JavaFX launcher background and its node opacity.
     private static final ReadOnlyObjectWrapper<LauncherBackground> background = new ReadOnlyObjectWrapper<>(
             new LauncherBackground(
@@ -371,35 +380,6 @@ public final class Themes {
     }
 
     static {
-        Supplier<@Nullable Brightness> effectiveBrightnessSupplier = () -> {
-            try {
-                return ThemePackManager.resolveCurrentThemeBrightness(ThemePackManager.currentResolveContext());
-            } catch (IOException | RuntimeException e) {
-                return null;
-            }
-        };
-        InvalidationListener autoBrightnessListener = o -> {
-            boolean auto;
-            if (settings().getThemeAppearanceOverrides().contains(LauncherSettings.THEME_APPEARANCE_BRIGHTNESS_MODE)) {
-                String val = settings().themeBrightnessModeProperty().get();
-                auto = val == null || switch (val.trim().toLowerCase(Locale.ROOT)) {
-                    case "light", "dark" -> false;
-                    default -> true;
-                };
-            } else {
-                auto = effectiveBrightnessSupplier.get() == null;
-            }
-            autoBrightness.set(auto);
-        };
-        settings().selectedThemeProperty().addListener(autoBrightnessListener);
-        settings().getThemeAppearanceOverrides().addListener(autoBrightnessListener);
-        settings().themeBrightnessModeProperty().addListener(autoBrightnessListener);
-        settings().backgroundTypeProperty().addListener(autoBrightnessListener);
-        if (FXUtils.DARK_MODE != null) {
-            FXUtils.DARK_MODE.addListener(autoBrightnessListener);
-        }
-        autoBrightnessListener.invalidated(null);
-
         ChangeListener<ResolvedTheme> listener = (observable, oldValue, newValue) -> {
             if (!Objects.equals(oldValue, newValue)) {
                 colorScheme.set(newValue.toColorScheme());
@@ -453,7 +433,7 @@ public final class Themes {
         }
 
         String themeBrightnessMode = settings().themeBrightnessModeProperty().get();
-        return switch (Objects.toString(themeBrightnessMode, "").trim().toLowerCase(Locale.ROOT)) {
+        return switch (Objects.toString(themeBrightnessMode, "").toLowerCase(Locale.ROOT).trim()) {
             case "light" -> Brightness.LIGHT;
             case "dark" -> Brightness.DARK;
             default -> getAutomaticBrightness();
@@ -464,16 +444,24 @@ public final class Themes {
     ///
     /// @return the effective launcher brightness
     public static Brightness getCurrentBrightness() {
-        Brightness contextBrightness = getThemeConditionBrightness();
         if (!settings().getThemeAppearanceOverrides().contains(LauncherSettings.THEME_APPEARANCE_BRIGHTNESS_MODE)) {
+            Brightness contextBrightness = getThemeConditionBrightness();
             try {
                 return Objects.requireNonNullElse(
                         ThemePackManager.resolveCurrentThemeBrightness(ThemeResolveContext.current(contextBrightness)),
                         contextBrightness);
-            } catch (IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException e) {
+                return contextBrightness;
             }
         }
-        return contextBrightness;
+
+        String themeBrightnessMode = settings().themeBrightnessModeProperty().get();
+        return switch (Objects.toString(themeBrightnessMode, "").toLowerCase(Locale.ROOT).trim()) {
+            case "auto" -> getAutomaticBrightness();
+            case "dark" -> Brightness.DARK;
+            case "light" -> Brightness.LIGHT;
+            default -> getAutomaticBrightness();
+        };
     }
 
     /// Returns the brightness requested by the current system or platform settings.
@@ -1131,22 +1119,8 @@ public final class Themes {
         return darkMode;
     }
 
-    /// Returns whether the current color scheme brightness is inherited from system.
-    public static ReadOnlyBooleanProperty autoBrightnessProperty() {
-        return autoBrightness.getReadOnlyProperty();
-    }
-
-    /// Registers native dark-mode integration once per stage where the platform supports it.
-    ///
-    /// Windows updates the stage's native frame; macOS updates the application appearance. The stage retains
-    /// its listener, which observes theme changes weakly. Repeated calls for an already registered stage do
-    /// nothing, including after hiding the stage or replacing its scene.
-    ///
-    /// @param stage the stage retaining the registration, accessed on the JavaFX application thread
+    /// Applies native dark-mode integration to a JavaFX stage where the platform supports it.
     public static void applyNativeDarkMode(Stage stage) {
-        if (stage.getProperties().containsKey(NATIVE_DARK_MODE_LISTENER)) {
-            return;
-        }
         if (OperatingSystem.SYSTEM_VERSION.isAtLeast(OSVersion.WINDOWS_11) && NativeUtils.USE_JNA && Dwmapi.INSTANCE != null) {
             ChangeListener<Boolean> listener = FXUtils.onWeakChange(Themes.darkModeProperty(), darkMode -> {
                 if (stage.isShowing()) {
@@ -1163,7 +1137,7 @@ public final class Themes {
                     });
                 }
             });
-            stage.getProperties().put(NATIVE_DARK_MODE_LISTENER, listener);
+            stage.getProperties().put("Themes.applyNativeDarkMode.listener", listener);
 
             if (stage.isShowing()) {
                 listener.changed(null, false, Themes.darkModeProperty().get());
@@ -1180,7 +1154,7 @@ public final class Themes {
             MacOSNativeUtils.setAppearance(darkModeProperty().get());
 
             ChangeListener<Boolean> listener = FXUtils.onWeakChange(Themes.darkModeProperty(), MacOSNativeUtils::setAppearance);
-            stage.getProperties().put(NATIVE_DARK_MODE_LISTENER, listener);
+            stage.getProperties().put("Themes.applyNativeDarkMode.listener", listener);
         }
     }
 

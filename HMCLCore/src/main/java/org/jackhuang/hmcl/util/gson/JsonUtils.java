@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util.gson;
 
 import com.google.gson.*;
@@ -47,7 +62,7 @@ public final class JsonUtils {
     /// - Pretty printing enabled.
     /// - Complex map key serialization enabled.
     /// - Type adapters for [java.time.Instant], [java.util.UUID], and [java.nio.file.Path].
-    /// - [ValidationTypeAdapterFactory], [LowerCaseEnumTypeAdapter#FACTORY], and
+    /// - [ValidationTypeAdapterFactory], [LowerCaseEnumTypeAdapterFactory], and
     ///   [JsonTypeAdapterFactory].
     public static final Gson GSON = defaultGsonBuilder().create();
 
@@ -57,11 +72,11 @@ public final class JsonUtils {
     /// Configured with:
     /// - [JsonTypeAdapterFactory]
     /// - [ValidationTypeAdapterFactory]
-    /// - [LowerCaseEnumTypeAdapter#FACTORY]
+    /// - [LowerCaseEnumTypeAdapterFactory]
     public static final Gson UGLY_GSON = new GsonBuilder()
             .registerTypeAdapterFactory(JsonTypeAdapterFactory.INSTANCE)
             .registerTypeAdapterFactory(ValidationTypeAdapterFactory.INSTANCE)
-            .registerTypeAdapterFactory(LowerCaseEnumTypeAdapter.FACTORY)
+            .registerTypeAdapterFactory(LowerCaseEnumTypeAdapterFactory.INSTANCE)
             .create();
 
     /// Not instantiable.
@@ -636,7 +651,7 @@ public final class JsonUtils {
     /// - [InstantTypeAdapter] registered for [java.time.Instant].
     /// - [UUIDTypeAdapter] registered for [java.util.UUID].
     /// - [PathTypeAdapter] registered for [java.nio.file.Path].
-    /// - [ValidationTypeAdapterFactory], [LowerCaseEnumTypeAdapter#FACTORY], and
+    /// - [ValidationTypeAdapterFactory], [LowerCaseEnumTypeAdapterFactory], and
     ///   [JsonTypeAdapterFactory] registered as type adapter factories.
     ///
     /// Callers may further customize the returned builder before calling
@@ -651,7 +666,7 @@ public final class JsonUtils {
                 .registerTypeAdapter(UUID.class, UUIDTypeAdapter.INSTANCE)
                 .registerTypeAdapter(Path.class, PathTypeAdapter.INSTANCE)
                 .registerTypeAdapterFactory(ValidationTypeAdapterFactory.INSTANCE)
-                .registerTypeAdapterFactory(LowerCaseEnumTypeAdapter.FACTORY)
+                .registerTypeAdapterFactory(LowerCaseEnumTypeAdapterFactory.INSTANCE)
                 .registerTypeAdapterFactory(JsonTypeAdapterFactory.INSTANCE);
     }
 }

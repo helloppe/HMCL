@@ -1,12 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util.io;
 
-import kala.encdet.EncodingDetector;
-import org.jetbrains.annotations.Nullable;
+import org.glavo.chardet.DetectedCharset;
+import org.glavo.chardet.UniversalDetector;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
@@ -36,29 +50,10 @@ public final class IOUtils {
         FileChannel channel = FileChannel.open(file);
         try {
             long oldPosition = channel.position();
-            long size = channel.size();
-
-            EncodingDetector detector = EncodingDetector.MODERN_WEB;
-
-            int bufferSize = (int) Math.max(Math.min(size - oldPosition, detector.maxBytes()), 8192L);
-            ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
-
-            //noinspection StatementWithEmptyBody
-            while (buffer.hasRemaining() && channel.read(buffer) > 0) {
-                // do nothing
-            }
-
-            buffer.flip();
-            Charset charset;
-            if (buffer.remaining() == 0) {
-                charset = UTF_8;
-            } else {
-                EncodingDetector.@Nullable Encoding encoding = detector.detect(buffer).bestEncoding();
-                Charset detectedCharset = encoding != null ? encoding.approximateCharset() : null;
-                charset = detectedCharset != null && (detectedCharset == UTF_8 || detectedCharset == US_ASCII)
-                        ? UTF_8
-                        : NATIVE_CHARSET;
-            }
+            DetectedCharset detectedCharset = UniversalDetector.detectCharset(channel);
+            Charset charset = detectedCharset != null && detectedCharset.isSupported()
+                    && (detectedCharset.getCharset() == UTF_8 || detectedCharset.getCharset() == US_ASCII)
+                    ? UTF_8 : NATIVE_CHARSET;
             channel.position(oldPosition);
             return new BufferedReader(new InputStreamReader(Channels.newInputStream(channel), charset));
         } catch (Throwable e) {

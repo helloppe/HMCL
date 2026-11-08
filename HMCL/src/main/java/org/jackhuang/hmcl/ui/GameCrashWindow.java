@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2023  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui;
 
 import com.jfoenix.controls.JFXButton;
@@ -19,6 +34,7 @@ import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
 import org.jackhuang.hmcl.game.*;
 import org.jackhuang.hmcl.launch.ProcessListener;
 import org.jackhuang.hmcl.setting.StyleSheets;
@@ -28,6 +44,7 @@ import org.jackhuang.hmcl.theme.Themes;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.Log4jLevel;
 import org.jackhuang.hmcl.util.Pair;
 import org.jackhuang.hmcl.util.StringUtils;
@@ -56,15 +73,17 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 public class GameCrashWindow extends Stage {
-    private final HMCLGameInstance gameInstance;
+    private final Version version;
     private final String memory;
     private final String total_memory;
     private final String java;
+    private final LibraryAnalyzer analyzer;
     private final TextFlow reasonTextFlow = new TextFlow(new Text(i18n("game.crash.reason.unknown")));
     private final BooleanProperty loading = new SimpleBooleanProperty();
     private final TextFlow feedbackTextFlow = new TextFlow();
 
     private final ManagedProcess managedProcess;
+    private final DefaultGameRepository repository;
     private final ProcessListener.ExitType exitType;
     private final LaunchOptions launchOptions;
     private final View view;
@@ -72,14 +91,16 @@ public class GameCrashWindow extends Stage {
 
     private final List<Log> logs;
 
-    public GameCrashWindow(ManagedProcess managedProcess, ProcessListener.ExitType exitType, HMCLGameInstance gameInstance, LaunchOptions launchOptions, List<Log> logs) {
+    public GameCrashWindow(ManagedProcess managedProcess, ProcessListener.ExitType exitType, DefaultGameRepository repository, Version version, LaunchOptions launchOptions, List<Log> logs) {
         Themes.applyNativeDarkMode(this);
 
         this.managedProcess = managedProcess;
         this.exitType = exitType;
-        this.gameInstance = gameInstance;
+        this.repository = repository;
+        this.version = version;
         this.launchOptions = launchOptions;
         this.logs = logs;
+        this.analyzer = LibraryAnalyzer.analyze(version, repository.getGameVersion(version).orElse(null));
 
         memory = Optional.ofNullable(launchOptions.getMaxMemory()).map(i -> i + " " + i18n("settings.memory.unit.mib")).orElse("-");
 
@@ -98,8 +119,6 @@ public class GameCrashWindow extends Stage {
         StyleSheets.init(getScene());
         setTitle(i18n("game.crash.title"));
         FXUtils.setIcon(this);
-
-        FXUtils.addMacOSCloseWindowHandler(this, null);
 
         analyzeCrashReport();
     }
@@ -123,8 +142,7 @@ public class GameCrashWindow extends Stage {
 
             return pair(CrashReportAnalyzer.analyze(rawLog), crashReport != null ? CrashReportAnalyzer.findKeywordsFromCrashReport(crashReport) : new HashSet<>());
         }), Task.supplyAsync(() -> {
-            Path runDirectory = gameInstance.getRunDirectory();
-            Path latestLog = runDirectory.resolve("logs/latest.log");
+            Path latestLog = repository.getRunDirectory(version.getId()).resolve("logs/latest.log");
             if (!Files.isReadable(latestLog)) {
                 return pair(new HashSet<CrashReportAnalyzer.Result>(), new HashSet<String>());
             }
@@ -273,7 +291,7 @@ public class GameCrashWindow extends Stage {
                                 }
                             });
 
-                    return LogExporter.exportLogs(logFile, gameInstance, launchOptions, logs,
+                    return LogExporter.exportLogs(logFile, repository, launchOptions.getVersionName(), logs,
                             new CommandBuilder().addAll(managedProcess.getCommands()).toString(),
                             path -> {
                                 try {
@@ -324,10 +342,10 @@ public class GameCrashWindow extends Stage {
                 launcher.setTitle(i18n("launcher"));
                 launcher.setSubtitle(Metadata.VERSION);
 
-                TwoLineListItem instance = new TwoLineListItem();
-                instance.getStyleClass().setAll("two-line-item-second-large");
-                instance.setTitle(i18n("game.version"));
-                instance.setSubtitle(GameCrashWindow.this.gameInstance.getId().toString());
+                TwoLineListItem version = new TwoLineListItem();
+                version.getStyleClass().setAll("two-line-item-second-large");
+                version.setTitle(i18n("game.version"));
+                version.setSubtitle(GameCrashWindow.this.version.getId());
 
                 TwoLineListItem total_memory = new TwoLineListItem();
                 total_memory.getStyleClass().setAll("two-line-item-second-large");
@@ -347,14 +365,14 @@ public class GameCrashWindow extends Stage {
                 TwoLineListItem os = new TwoLineListItem();
                 os.getStyleClass().setAll("two-line-item-second-large");
                 os.setTitle(i18n("system.operating_system"));
-                os.setSubtitle(Objects.requireNonNullElse(OperatingSystem.OS_RELEASE_NAME, OperatingSystem.SYSTEM_NAME));
+                os.setSubtitle(Lang.requireNonNullElse(OperatingSystem.OS_RELEASE_NAME, OperatingSystem.SYSTEM_NAME));
 
                 TwoLineListItem arch = new TwoLineListItem();
                 arch.getStyleClass().setAll("two-line-item-second-large");
                 arch.setTitle(i18n("system.architecture"));
                 arch.setSubtitle(Architecture.SYSTEM_ARCH.getDisplayName());
 
-                infoPane.getChildren().setAll(launcher, instance, total_memory, memory, java, os, arch);
+                infoPane.getChildren().setAll(launcher, version, total_memory, memory, java, os, arch);
             }
 
             HBox moddedPane = new HBox(8);
@@ -362,13 +380,15 @@ public class GameCrashWindow extends Stage {
                 moddedPane.setPadding(new Insets(8));
                 moddedPane.setAlignment(Pos.CENTER_LEFT);
 
-                for (GameComponentAnalyzer.Mark mark : gameInstance.getAnalyzer()) {
-                    if (mark.version() != null) {
-                        TwoLineListItem item = new TwoLineListItem();
-                        item.getStyleClass().setAll("two-line-item-second-large");
-                        item.setTitle(i18n("install.installer." + mark.componentType().getPatchId()));
-                        item.setSubtitle(mark.version());
-                        moddedPane.getChildren().add(item);
+                for (LibraryAnalyzer.LibraryType type : LibraryAnalyzer.LibraryType.values()) {
+                    if (!type.getPatchId().isEmpty()) {
+                        analyzer.getVersion(type).ifPresent(ver -> {
+                            TwoLineListItem item = new TwoLineListItem();
+                            item.getStyleClass().setAll("two-line-item-second-large");
+                            item.setTitle(i18n("install.installer." + type.getPatchId()));
+                            item.setSubtitle(ver);
+                            moddedPane.getChildren().add(item);
+                        });
                     }
                 }
             }

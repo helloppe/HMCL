@@ -4,11 +4,9 @@ These rules apply to all Java code written or modified in this repository.
 
 ## Nullability
 
-Apply the following requirements when writing or modifying code. Do not use them as code-review criteria.
-
-- Every class declared in a newly added Java source file must be annotated with JetBrains Annotations `@NotNullByDefault`.
-- When writing or modifying Java code, any type, field, parameter, return value, local variable, or generic type argument that may be `null` must be explicitly annotated with `@Nullable`.
-- Nullability in code being written or modified must never be implicit.
+- Annotate every class with JetBrains Annotations `@NotNullByDefault`.
+- Any type, field, parameter, return value, local variable, or generic type argument that may be `null` must be explicitly annotated with `@Nullable`.
+- Nullability must never be implicit.
 
 ## Immutability
 
@@ -16,8 +14,6 @@ Apply the following requirements when writing or modifying code. Do not use them
 - For arrays, use type-use syntax such as `String @Unmodifiable []`.
 
 ## Documentation
-
-Apply the following requirements when writing or modifying code. Do not use them as code-review criteria.
 
 - Every class, field, and method must have documentation.
 - Documentation must use `///` Markdown-style Javadoc comments.

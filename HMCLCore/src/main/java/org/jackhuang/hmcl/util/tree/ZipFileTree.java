@@ -1,11 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (C) 2024 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2024 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util.tree;
 
 import kala.compress.archivers.zip.ZipArchiveEntry;
 import kala.compress.archivers.zip.ZipArchiveReader;
+import org.jackhuang.hmcl.util.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,26 +37,23 @@ import java.util.Set;
  */
 public final class ZipFileTree extends ArchiveFileTree<ZipArchiveReader, ZipArchiveEntry> {
     private final boolean closeReader;
-    private @Nullable Dir<ZipArchiveEntry> root;
 
-    public ZipFileTree(ZipArchiveReader file) {
+    public ZipFileTree(ZipArchiveReader file) throws IOException {
         this(file, true);
     }
 
-    public ZipFileTree(ZipArchiveReader file, boolean closeReader) {
+    public ZipFileTree(ZipArchiveReader file, boolean closeReader) throws IOException {
         super(file);
         this.closeReader = closeReader;
-    }
-
-    @Override
-    public Dir<ZipArchiveEntry> getRoot() {
-        if (root == null) {
-            root = new Dir<>("");
-            for (ZipArchiveEntry zipArchiveEntry : reader.getEntries()) {
-                addEntry(root, zipArchiveEntry);
+        try {
+            for (ZipArchiveEntry zipArchiveEntry : file.getEntries()) {
+                addEntry(zipArchiveEntry);
             }
+        } catch (Throwable e) {
+            if (closeReader)
+                IOUtils.closeQuietly(file, e);
+            throw e;
         }
-        return root;
     }
 
     @Override
@@ -89,15 +101,6 @@ public final class ZipFileTree extends ArchiveFileTree<ZipArchiveReader, ZipArch
 
             posixView.setPermissions(permissions);
         }
-    }
-
-    @Override
-    public @Nullable ZipArchiveEntry getEntry(@NotNull String entryPath) {
-        ZipArchiveEntry entry = reader.getEntry(entryPath);
-        if (entry != null)
-            return entry;
-
-        return super.getEntry(entryPath);
     }
 
     @Override

@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui;
 
 import com.jfoenix.controls.JFXButton;
@@ -9,60 +24,57 @@ import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
-import javafx.beans.property.ReadOnlyStringProperty;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
+import javafx.beans.InvalidationListener;
+import javafx.beans.WeakInvalidationListener;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.ReadOnlyDoubleProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.Label;
 import javafx.scene.layout.Region;
-import javafx.stage.*;
+import javafx.scene.paint.Color;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.Duration;
 import org.jackhuang.hmcl.Launcher;
 import org.jackhuang.hmcl.Metadata;
-import org.jackhuang.hmcl.game.GameInstanceID;
-import org.jackhuang.hmcl.game.HMCLGameRepository;
 import org.jackhuang.hmcl.game.LauncherHelper;
-import org.jackhuang.hmcl.game.ModpackHelper;
 import org.jackhuang.hmcl.java.JavaManager;
 import org.jackhuang.hmcl.java.JavaRuntime;
-import org.jackhuang.hmcl.modpack.Modpack;
 import org.jackhuang.hmcl.setting.*;
-import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
 import org.jackhuang.hmcl.ui.account.AccountListPage;
+import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
+import org.jackhuang.hmcl.ui.animation.Motion;
 import org.jackhuang.hmcl.ui.construct.*;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
-import org.jackhuang.hmcl.ui.decorator.Decorator;
+import org.jackhuang.hmcl.ui.decorator.DecoratorController;
 import org.jackhuang.hmcl.ui.download.DownloadPage;
 import org.jackhuang.hmcl.ui.main.LauncherSettingsPage;
 import org.jackhuang.hmcl.ui.main.RootPage;
 import org.jackhuang.hmcl.ui.terracotta.TerracottaPage;
-import org.jackhuang.hmcl.ui.instances.GameListPage;
-import org.jackhuang.hmcl.ui.instances.GameInstancePage;
-import org.jackhuang.hmcl.ui.instances.Instances;
-import org.jackhuang.hmcl.upgrade.IntegrityChecker;
+import org.jackhuang.hmcl.ui.versions.GameListPage;
+import org.jackhuang.hmcl.ui.versions.VersionPage;
+import org.jackhuang.hmcl.ui.versions.Versions;
 import org.jackhuang.hmcl.upgrade.UpdateChecker;
 import org.jackhuang.hmcl.util.*;
-import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
-import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
@@ -72,136 +84,89 @@ import static org.jackhuang.hmcl.setting.SettingsManager.userState;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Provides shared launcher pages, main-window lifecycle operations, and dialogs.
-@NotNullByDefault
 public final class Controllers {
-    /// The shown-tip key for the minimum supported Java version.
     public static final String JAVA_VERSION_TIP = "javaVersion";
-    /// The shown-tip key for the disabled-JIT warning.
     public static final String JAVA_INTERPRETED_MODE_TIP = "javaInterpretedMode";
-    /// The shown-tip key for the software-rendering warning.
     public static final String SOFTWARE_RENDERING = "softwareRendering";
-    /// The shown-tip key storing the year of the April Fools prompt.
     public static final String APRIL_FOOLS = "aprilFools";
 
-    /// The coordinator for the main window's scene graph and navigation stack.
-    private static @Nullable Decorator decorator;
+    private static final int CUSTOM_DECORATION_SHADOW_SIZE = 8;
+    private static final int CUSTOM_DECORATION_SHADOW_EXTENT = CUSTOM_DECORATION_SHADOW_SIZE * 2;
 
-    /// Prevents instantiation of this utility class.
+    public static final int MIN_CONTENT_WIDTH = 800 + 2; // bg width + border width*2
+    public static final int MIN_CONTENT_HEIGHT = 450 + 2 + 40; // bg height + border width*2 + toolbar height
+    public static final int MIN_WIDTH = MIN_CONTENT_WIDTH + CUSTOM_DECORATION_SHADOW_EXTENT;
+    public static final int MIN_HEIGHT = MIN_CONTENT_HEIGHT + CUSTOM_DECORATION_SHADOW_EXTENT;
+    public static final Screen SCREEN = Screen.getPrimary();
+    private static InvalidationListener stageSizeChangeListener;
+    private static DoubleProperty stageX = new SimpleDoubleProperty();
+    private static DoubleProperty stageY = new SimpleDoubleProperty();
+    private static DoubleProperty stageWidth = new SimpleDoubleProperty();
+    private static DoubleProperty stageHeight = new SimpleDoubleProperty();
+
+    private static Scene scene;
+    private static Stage stage;
+    private static VersionPage versionPage;
+    private static Lazy<GameListPage> gameListPage = new Lazy<>(GameListPage::new);
+    private static Lazy<RootPage> rootPage = new Lazy<>(RootPage::new);
+    private static DecoratorController decorator;
+    private static DownloadPage downloadPage;
+    private static Lazy<AccountListPage> accountListPage = new Lazy<>(() -> {
+        AccountListPage accountListPage = new AccountListPage();
+        accountListPage.selectedAccountProperty().bindBidirectional(Accounts.selectedAccountProperty());
+        accountListPage.accountsProperty().bindContent(Accounts.getAccounts());
+        accountListPage.authServersProperty().bindContentBidirectional(getAuthlibInjectorServers());
+        return accountListPage;
+    });
+    private static LauncherSettingsPage settingsPage;
+    private static Lazy<TerracottaPage> terracottaPage = new Lazy<>(TerracottaPage::new);
+
     private Controllers() {
     }
 
-    /// The shared launcher-title property.
-    private static @Nullable StringProperty launcherTitle;
-
-    /// Returns the shared launcher-title property.
-    ///
-    /// For official builds, first access checks integrity, asynchronously if no result is cached.
-    /// Failed verification changes the title to indicate a modified build; asynchronous results
-    /// are applied on the JavaFX application thread.
-    public static ReadOnlyStringProperty launcherTitleProperty() {
-        if (launcherTitle == null) {
-            launcherTitle = new SimpleStringProperty(Controllers.class, "launcherTitle", Metadata.OFFICIAL_BUILD
-                    ? i18n("launcher.title", Metadata.VERSION)
-                    : i18n("launcher.title.unofficial", Metadata.VERSION));
-            if (Metadata.OFFICIAL_BUILD) {
-                @Nullable Boolean selfVerified = IntegrityChecker.getSelfVerified();
-                if (selfVerified != null) {
-                    if (!selfVerified) {
-                        launcherTitle.set(i18n("launcher.title.modified", Metadata.VERSION));
-                    }
-                } else {
-                    Schedulers.io().execute(() -> {
-                        if (!IntegrityChecker.isSelfVerified()) {
-                            FXUtils.runInFX(() -> {
-                                //noinspection DataFlowIssue
-                                launcherTitle.set(i18n("launcher.title.modified", Metadata.VERSION));
-                            });
-                        }
-                    });
-                }
-            }
-        }
-
-        return launcherTitle;
+    /// Action used by confirmation dialogs that may fail before the confirmed operation is complete.
+    @FunctionalInterface
+    public interface ThrowingRunnable {
+        /// Runs the confirmed action.
+        ///
+        /// @throws Exception if the action fails
+        void run() throws Exception;
     }
 
-    /// Returns the stage currently attached to the main-window decorator.
-    ///
-    /// @return the current stage, or `null` before initialization or after detachment
-    public static @Nullable Stage getStage() {
-        @Nullable Decorator currentDecorator = decorator;
-        return currentDecorator == null ? null : currentDecorator.getStage();
+    public static Scene getScene() {
+        return scene;
     }
 
-    /// The cached game-instance page.
-    private static @Nullable GameInstancePage gameInstancePage;
+    public static Stage getStage() {
+        return stage;
+    }
 
-    /// Creates and attaches the game-instance page for a layout pulse unless already cached.
     @FXThread
-    public static void prepareGameInstancePage() {
-        if (gameInstancePage == null) {
-            LOG.info("Preparing game instance page");
-            gameInstancePage = getDecorator().prewarmPage(new GameInstancePage());
+    public static VersionPage getVersionPage() {
+        if (versionPage == null) {
+            versionPage = new VersionPage();
         }
+        return versionPage;
     }
 
-    /// Returns the cached game-instance page, creating it if necessary.
     @FXThread
-    public static GameInstancePage getGameInstancePage() {
-        if (gameInstancePage == null) {
-            gameInstancePage = new GameInstancePage();
-        }
-        return gameInstancePage;
-    }
-
-    /// The cached game-list page.
-    private static @Nullable GameListPage gameListPage;
-
-    /// Creates and attaches the game-list page for a layout pulse unless already cached.
-    @FXThread
-    public static void prepareGameListPage() {
-        if (gameListPage == null) {
-            LOG.info("Preparing game list page");
-            gameListPage = getDecorator().prewarmPage(new GameListPage());
+    public static void prepareVersionPage() {
+        if (versionPage == null) {
+            LOG.info("Prepare the version page");
+            versionPage = FXUtils.prepareNode(new VersionPage());
         }
     }
 
-    /// Returns the cached game-list page, creating it if necessary.
     @FXThread
     public static GameListPage getGameListPage() {
-        if (gameListPage == null) {
-            gameListPage = new GameListPage();
-        }
-        return gameListPage;
+        return gameListPage.get();
     }
 
-
-    /// The cached root page.
-    private static @Nullable RootPage rootPage;
-
-    /// Returns the cached root page, creating it if necessary.
     @FXThread
     public static RootPage getRootPage() {
-        if (rootPage == null) {
-            rootPage = new RootPage();
-        }
-        return rootPage;
+        return rootPage.get();
     }
 
-    /// The cached settings page.
-    private static @Nullable LauncherSettingsPage settingsPage;
-
-    /// Creates and prewarms the settings page unless already cached.
-    @FXThread
-    public static void prepareSettingsPage() {
-        if (settingsPage == null) {
-            LOG.info("Preparing settings page");
-            settingsPage = getDecorator().prewarmPage(new LauncherSettingsPage());
-        }
-    }
-
-    /// Returns the cached settings page, creating it if necessary.
     @FXThread
     public static LauncherSettingsPage getSettingsPage() {
         if (settingsPage == null) {
@@ -210,34 +175,19 @@ public final class Controllers {
         return settingsPage;
     }
 
-    /// The cached account page with shared account bindings.
-    private static @Nullable AccountListPage accountListPage;
+    @FXThread
+    public static void prepareSettingsPage() {
+        if (settingsPage == null) {
+            LOG.info("Prepare the settings page");
+            settingsPage = FXUtils.prepareNode(new LauncherSettingsPage());
+        }
+    }
 
-    /// Returns the cached account page, creating it if necessary.
     @FXThread
     public static AccountListPage getAccountListPage() {
-        if (accountListPage == null) {
-            accountListPage = new AccountListPage();
-            accountListPage.selectedAccountProperty().bindBidirectional(Accounts.selectedAccountProperty());
-            accountListPage.accountsProperty().bindContent(Accounts.getAccounts());
-            accountListPage.authServersProperty().bindContentBidirectional(getAuthlibInjectorServers());
-        }
-        return accountListPage;
+        return accountListPage.get();
     }
 
-    /// The cached download page.
-    private static @Nullable DownloadPage downloadPage;
-
-    /// Creates and attaches the download page for a layout pulse unless already cached.
-    @FXThread
-    public static void prepareDownloadPage() {
-        if (downloadPage == null) {
-            LOG.info("Preparing download page");
-            downloadPage = getDecorator().prewarmPage(new DownloadPage());
-        }
-    }
-
-    /// Returns the cached download page, creating it if necessary.
     @FXThread
     public static DownloadPage getDownloadPage() {
         if (downloadPage == null) {
@@ -246,50 +196,84 @@ public final class Controllers {
         return downloadPage;
     }
 
-    /// The cached Terracotta page.
-    private static @Nullable TerracottaPage terracottaPage;
+    @FXThread
+    public static void prepareDownloadPage() {
+        if (downloadPage == null) {
+            LOG.info("Prepare the download page");
+            downloadPage = FXUtils.prepareNode(new DownloadPage());
+        }
+    }
 
-    /// Returns the cached Terracotta page, creating it if necessary.
     @FXThread
     public static Node getTerracottaPage() {
-        if (terracottaPage == null) {
-            terracottaPage = new TerracottaPage();
-        }
-        return terracottaPage;
+        return terracottaPage.get();
     }
 
-    /// Returns the initialized main-window decorator.
-    ///
-    /// @throws NullPointerException if the decorator is unavailable before initialization or after shutdown
     @FXThread
-    public static Decorator getDecorator() {
-        return Objects.requireNonNull(decorator, "Main window is not initialized");
+    public static DecoratorController getDecorator() {
+        return decorator;
     }
 
-    /// Detaches the main stage and releases its stage-specific listeners.
-    ///
-    /// Retains the decorator and pages, leaving [#isStopped()] unchanged. Does nothing if no decorator exists.
-    ///
-    /// @throws IllegalStateException if a decorator exists and the caller is not on the JavaFX application thread
-    public static void onApplicationStop() {
-        if (decorator != null) {
-            decorator.detachStage();
+    public static void saveWindowStates() {
+        saveWindowBounds();
+    }
+
+    private static void saveWindowBounds() {
+        if (stageX != null) {
+            state().setX(toContentX(stageX.get()) / SCREEN.getBounds().getWidth());
+        }
+        if (stageY != null) {
+            state().setY(toContentY(stageY.get()) / SCREEN.getBounds().getHeight());
+        }
+        if (stageHeight != null) {
+            state().setHeight(toContentHeight(stageHeight.get()));
+        }
+        if (stageWidth != null) {
+            state().setWidth(toContentWidth(stageWidth.get()));
         }
     }
 
-    /// Configures the main stage's application identity, shutdown action, and taskbar relaunch information.
-    ///
-    /// @param stage the unshown main stage
-    private static void configureMainStage(Stage stage) {
-        stage.setOnCloseRequest(event -> Launcher.stopApplication());
-        FXUtils.setIcon(stage);
-        stage.titleProperty().bind(launcherTitleProperty());
-        WindowsNativeUtils.installWindowsAppUserModelRelaunchProperties(stage);
+    public static void onApplicationStop() {
+        stageSizeChangeListener = null;
+        saveWindowBounds();
+        stageX = null;
+        stageY = null;
+        stageHeight = null;
+        stageWidth = null;
     }
 
-    /// Initializes the main application stage, scene graph, and background services.
-    ///
-    /// @param stage the primary application stage, which must not have been shown
+    private static double toContentX(double stageX) {
+        return stageX + CUSTOM_DECORATION_SHADOW_SIZE;
+    }
+
+    private static double toContentY(double stageY) {
+        return stageY + CUSTOM_DECORATION_SHADOW_SIZE;
+    }
+
+    private static double toStageX(double contentX) {
+        return contentX - CUSTOM_DECORATION_SHADOW_SIZE;
+    }
+
+    private static double toStageY(double contentY) {
+        return contentY - CUSTOM_DECORATION_SHADOW_SIZE;
+    }
+
+    private static double toContentWidth(double stageWidth) {
+        return Math.max(0.0, stageWidth - CUSTOM_DECORATION_SHADOW_EXTENT);
+    }
+
+    private static double toContentHeight(double stageHeight) {
+        return Math.max(0.0, stageHeight - CUSTOM_DECORATION_SHADOW_EXTENT);
+    }
+
+    private static double toStageWidth(double contentWidth) {
+        return contentWidth + CUSTOM_DECORATION_SHADOW_EXTENT;
+    }
+
+    private static double toStageHeight(double contentHeight) {
+        return contentHeight + CUSTOM_DECORATION_SHADOW_EXTENT;
+    }
+
     public static void initialize(Stage stage) {
         LOG.info("Start initializing application");
 
@@ -301,16 +285,102 @@ public final class Controllers {
                 LOG.info("Enable sub-pixel antialiasing");
                 System.getProperties().put("prism.lcdtext", "true");
             } else if ("gray".equalsIgnoreCase(fontAntiAliasing)
-                    || OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS && Screen.getPrimary().getOutputScaleX() > 1) {
+                    || OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS && SCREEN.getOutputScaleX() > 1) {
                 LOG.info("Disable sub-pixel antialiasing");
                 System.getProperties().put("prism.lcdtext", "false");
             }
         }
 
-        configureMainStage(stage);
+        Controllers.stage = stage;
 
-        decorator = new Decorator(getRootPage(), Controllers::configureMainStage);
-        Scene mainScene = decorator.attachStage(stage);
+        stageSizeChangeListener = o -> {
+            ReadOnlyDoubleProperty sourceProperty = (ReadOnlyDoubleProperty) o;
+            DoubleProperty targetProperty;
+            switch (sourceProperty.getName()) {
+                case "x": {
+                    targetProperty = stageX;
+                    break;
+                }
+                case "y": {
+                    targetProperty = stageY;
+                    break;
+                }
+                case "width": {
+                    targetProperty = stageWidth;
+                    break;
+                }
+                case "height": {
+                    targetProperty = stageHeight;
+                    break;
+                }
+                default: {
+                    targetProperty = null;
+                }
+            }
+
+            if (targetProperty != null
+                    && Controllers.stage != null
+                    && !Controllers.stage.isIconified()
+                    // https://github.com/HMCL-dev/HMCL/issues/4290
+                    && (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS ||
+                    !Controllers.stage.isFullScreen() && !Controllers.stage.isMaximized())
+            ) {
+                targetProperty.set(sourceProperty.get());
+            }
+        };
+
+        WeakInvalidationListener weakListener = new WeakInvalidationListener(stageSizeChangeListener);
+
+        double initContentWidth = Math.max(MIN_CONTENT_WIDTH, state().getWidth());
+        double initContentHeight = Math.max(MIN_CONTENT_HEIGHT, state().getHeight());
+        double initWidth = toStageWidth(initContentWidth);
+        double initHeight = toStageHeight(initContentHeight);
+
+        {
+            double initContentX = state().getX() * SCREEN.getBounds().getWidth();
+            double initContentY = state().getY() * SCREEN.getBounds().getHeight();
+
+            boolean invalid = true;
+            double border = 20D;
+            for (Screen screen : Screen.getScreens()) {
+                Rectangle2D bound = screen.getBounds();
+
+                if (bound.getMinX() + border <= initContentX + initContentWidth
+                        && initContentX <= bound.getMaxX() - border
+                        && bound.getMinY() + border <= initContentY
+                        && initContentY <= bound.getMaxY() - border) {
+                    invalid = false;
+                    break;
+                }
+            }
+
+            if (invalid) {
+                initContentX = (0.5D - initContentWidth / SCREEN.getBounds().getWidth() / 2)
+                        * SCREEN.getBounds().getWidth();
+                initContentY = (0.5D - initContentHeight / SCREEN.getBounds().getHeight() / 2)
+                        * SCREEN.getBounds().getHeight();
+            }
+
+            double initX = toStageX(initContentX);
+            double initY = toStageY(initContentY);
+            stage.setX(initX);
+            stage.setY(initY);
+            stageX.set(initX);
+            stageY.set(initY);
+        }
+
+        stage.setHeight(initHeight);
+        stage.setWidth(initWidth);
+        stageHeight.set(initHeight);
+        stageWidth.set(initWidth);
+        stage.xProperty().addListener(weakListener);
+        stage.yProperty().addListener(weakListener);
+        stage.heightProperty().addListener(weakListener);
+        stage.widthProperty().addListener(weakListener);
+
+        stage.setOnCloseRequest(e -> Launcher.stopApplication());
+
+        decorator = new DecoratorController(stage, getRootPage());
         getRootPage().getMainPage().showUpdateProperty().bind(UpdateChecker.checkingUpdateProperty().not().and(UpdateChecker.outdatedProperty()));
         getRootPage().getMainPage().showUpdateDialogProperty().bind(
                 decorator.backableProperty().not()
@@ -326,7 +396,36 @@ public final class Controllers {
 
         Lang.thread(JavaManager::initialize, "Search Java", true);
 
-        StyleSheets.init(mainScene);
+        scene = new Scene(decorator.getDecorator());
+        scene.setFill(Color.TRANSPARENT);
+        stage.setMinWidth(MIN_WIDTH);
+        stage.setMinHeight(MIN_HEIGHT);
+        decorator.getDecorator().prefWidthProperty().bind(scene.widthProperty());
+        decorator.getDecorator().prefHeightProperty().bind(scene.heightProperty());
+        StyleSheets.init(scene);
+
+        FXUtils.setIcon(stage);
+        stage.setTitle(Metadata.FULL_TITLE);
+        stage.initStyle(StageStyle.TRANSPARENT);
+        stage.setScene(scene);
+
+        if (AnimationUtils.playWindowAnimation()) {
+            Timeline timeline = new Timeline(
+                    new KeyFrame(Duration.millis(0),
+                            new KeyValue(decorator.getDecorator().opacityProperty(), 0, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleXProperty(), 0.8, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleYProperty(), 0.8, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleZProperty(), 0.8, Motion.EASE)
+                    ),
+                    new KeyFrame(Duration.millis(600),
+                            new KeyValue(decorator.getDecorator().opacityProperty(), 1, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleXProperty(), 1, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleYProperty(), 1, Motion.EASE),
+                            new KeyValue(decorator.getDecorator().scaleZProperty(), 1, Motion.EASE)
+                    )
+            );
+            timeline.play();
+        }
 
         if (!Architecture.SYSTEM_ARCH.isX86() && SettingsManager.userState().platformPromptVersionProperty().get() < 1) {
             Runnable continueAction = () -> {
@@ -349,7 +448,7 @@ public final class Controllers {
         }
 
         if (JavaRuntime.CURRENT_VERSION < Metadata.MINIMUM_SUPPORTED_JAVA_VERSION) {
-            @Nullable Number shownTipVersion = null;
+            Number shownTipVersion = null;
             try {
                 shownTipVersion = (Number) state().getShownTips().get(JAVA_VERSION_TIP);
             } catch (ClassCastException e) {
@@ -357,7 +456,7 @@ public final class Controllers {
             }
             if (shownTipVersion == null || shownTipVersion.intValue() < Metadata.MINIMUM_SUPPORTED_JAVA_VERSION) {
                 MessageDialogPane.Builder builder = new MessageDialogPane.Builder(i18n("fatal.deprecated_java_version"), null, MessageType.WARNING);
-                @Nullable String downloadLink = Metadata.getSuggestedJavaDownloadLink();
+                String downloadLink = Metadata.getSuggestedJavaDownloadLink();
                 if (downloadLink != null)
                     builder.addHyperLink(
                             i18n("fatal.deprecated_java_version.download_link", Metadata.RECOMMENDED_JAVA_VERSION),
@@ -416,7 +515,7 @@ public final class Controllers {
             if (!I18n.getLocale().getLocale().getLanguage().equals("zh"))
                 break aprilFools;
 
-            @Nullable SupportedLocale lzh = SupportedLocale.getSupportedLocales().stream()
+            SupportedLocale lzh = SupportedLocale.getSupportedLocales().stream()
                     .filter(locale -> "lzh".equals(locale.getName()))
                     .findFirst().orElse(null);
 
@@ -453,95 +552,42 @@ public final class Controllers {
                         }, updateShowTips);
                     }, updateShowTips);
         }
-
-        tryInstallBundledModpack(GameDirectoryManager.getSelectedRepository());
     }
 
-    /// Installs the package found by [Metadata#findBundledModpackFile()] asynchronously, if present.
-    ///
-    /// Shows progress without a cancel action and attempts to delete the package after success.
-    /// Failures are logged; a retained package may be retried at the next startup.
-    private static void tryInstallBundledModpack(HMCLGameRepository repository) {
-        @Nullable Path modpackFile = Metadata.findBundledModpackFile();
-        if (modpackFile == null) {
-            return;
-        }
-
-        LOG.info("Found bundled modpack at " + modpackFile + "; starting automatic install");
-
-        Controllers.taskDialog(
-                Task.composeAsync(Schedulers.io(), () -> {
-                            Modpack modpack = ModpackHelper.readModpackManifest(modpackFile);
-                            return ModpackHelper.getInstallTask(
-                                    repository, modpackFile, new GameInstanceID(modpack.getName()), modpack, null);
-                        })
-                        .whenComplete(Schedulers.javafx(), (ignored, exception) -> {
-                            if (exception != null) {
-                                LOG.warning("Failed to install bundled modpack", exception);
-                                return;
-                            }
-                            try {
-                                Files.deleteIfExists(modpackFile);
-                            } catch (IOException e) {
-                                LOG.warning("Failed to delete bundled modpack: " + modpackFile, e);
-                            }
-                        }), i18n("modpack.installing"), TaskCancellationAction.NO_CANCEL
-        );
-    }
-
-    /// Shows the content in the main-window dialog stack without waiting for it to close.
-    ///
-    /// Does nothing if no decorator exists. If the decorator has no scene, display is deferred
-    /// to the JavaFX application thread; otherwise this method must be called on that thread.
-    ///
-    /// @param content the dialog content
-    /// @throws IllegalStateException if the decorator has a scene and the caller is not on the JavaFX application thread
     public static void dialog(Region content) {
         if (decorator != null)
             decorator.showDialog(content);
     }
 
-    /// Shows an informational message with the default title; see [#dialog(String, String)].
     public static void dialog(String text) {
         dialog(text, null);
     }
 
-    /// Shows a message using [#dialog(String, String, MessageType)] with [MessageType#INFO].
-    public static void dialog(String text, @Nullable String title) {
+    public static void dialog(String text, String title) {
         dialog(text, title, MessageType.INFO);
     }
 
-    /// Shows a message using [#dialog(String, String, MessageType, Runnable)] with no OK action.
-    public static void dialog(String text, @Nullable String title, MessageType type) {
+    public static void dialog(String text, String title, MessageType type) {
         dialog(text, title, type, null);
     }
 
-    /// Shows a message with an OK button and an optional action.
-    ///
-    /// A null title uses the message type's default title. Activating OK, including through Escape,
-    /// invokes the action if non-null. See [#dialog(Region)].
-    public static void dialog(String text, @Nullable String title, MessageType type, @Nullable Runnable ok) {
+    public static void dialog(String text, String title, MessageType type, Runnable ok) {
         dialog(new MessageDialogPane.Builder(text, title, type).ok(ok).build());
     }
 
-    /// Shows a question using [#confirm(String, String, MessageType, Runnable, Runnable)] with [MessageType#QUESTION].
-    public static void confirm(String text, @Nullable String title, @Nullable Runnable yes, @Nullable Runnable no) {
+    public static void confirm(String text, String title, Runnable yes, Runnable no) {
         confirm(text, title, MessageType.QUESTION, yes, no);
     }
 
-    /// Shows a message with Yes and No buttons and optional actions.
-    ///
-    /// A null title uses the message type's default title. Each button invokes its corresponding
-    /// action if non-null; Escape activates No. See [#dialog(Region)].
-    public static void confirm(String text, @Nullable String title, MessageType type, @Nullable Runnable yes, @Nullable Runnable no) {
+    public static void confirm(String text, String title, MessageType type, Runnable yes, Runnable no) {
         dialog(new MessageDialogPane.Builder(text, title, type).yesOrNo(yes, no).build());
     }
 
     /// Shows a warning that confirms backing up a read-only settings file before overwriting it.
     ///
-    /// @param text      the file-specific read-only warning
+    /// @param text the file-specific read-only warning
     /// @param overwrite the action that backs up and overwrites the file
-    public static void confirmBackupAndOverwrite(String text, ExceptionalRunnable<?> overwrite) {
+    public static void confirmBackupAndOverwrite(String text, ThrowingRunnable overwrite) {
         dialog(new MessageDialogPane.Builder(
                 text + "\n\n" + i18n("settings.file.force_write.confirm"),
                 i18n("message.warning"),
@@ -560,28 +606,15 @@ public final class Controllers {
                 .build());
     }
 
-    /// Shows a message using [#confirmAction(String, String, MessageType, ButtonBase, Runnable)] with no cancel action.
-    public static void confirmAction(String text, @Nullable String title, MessageType type, ButtonBase actionButton) {
+    public static void confirmAction(String text, String title, MessageType type, ButtonBase actionButton) {
         dialog(new MessageDialogPane.Builder(text, title, type).actionOrCancel(actionButton, null).build());
     }
 
-    /// Shows a message with the supplied action button and a Cancel button.
-    ///
-    /// A null title uses the message type's default title. Cancel or Escape invokes the optional cancel action.
-    /// The action button keeps its handler and gains a dialog-close handler. See [#dialog(Region)].
-    public static void confirmAction(String text, @Nullable String title, MessageType type, ButtonBase actionButton, @Nullable Runnable cancel) {
+    public static void confirmAction(String text, String title, MessageType type, ButtonBase actionButton, Runnable cancel) {
         dialog(new MessageDialogPane.Builder(text, title, type).actionOrCancel(actionButton, cancel).build());
     }
 
-    /// Shows a confirmation message whose OK button is enabled after a countdown.
-    ///
-    /// The countdown starts at this call; enabling OK follows JavaFX animation timing.
-    /// Cancel or Escape stops the countdown and invokes the optional cancel action.
-    /// A null title uses the message type's default title; the OK action may be null. See [#dialog(Region)].
-    ///
-    /// @param seconds the positive countdown duration, in seconds
-    /// @throws IllegalArgumentException if the number of seconds is not positive
-    public static void confirmWithCountdown(String text, @Nullable String title, int seconds, MessageType messageType,
+    public static void confirmWithCountdown(String text, String title, int seconds, MessageType messageType,
                                             @Nullable Runnable ok, @Nullable Runnable cancel) {
         if (seconds <= 0)
             throw new IllegalArgumentException("Seconds must be greater than 0");
@@ -613,121 +646,54 @@ public final class Controllers {
         timeline.play();
     }
 
-    /// Queues content until the dialog stack closes, or shows it if no dialog is open.
-    ///
-    /// Uses the availability and thread rules of [#dialog(Region)].
     public static void dialogLater(Region content) {
         if (decorator != null)
             decorator.showDialogLater(content);
     }
 
-    /// Shows a text prompt using [#prompt(String, FutureCallback, String, ValidatorBase...)] with empty input and no validators.
-    public static CompletableFuture<String> prompt(@Nullable String title, FutureCallback<String> onResult) {
+    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult) {
         return prompt(title, onResult, "");
     }
 
-    /// Shows a text prompt and returns a future for its accepted text.
-    ///
-    /// Accepting invokes the callback. Resolving completes the future with the text at resolution time
-    /// and closes the dialog; rejecting displays the reason without completing the future.
-    /// Closing alone does not complete or cancel the future; a pending callback may still resolve it.
-    /// Without a decorator, the future remains incomplete. See [#dialog(Region)].
-    ///
-    /// @param title the prompt title, or null for no title text
-    /// @param onResult the callback that accepts or rejects the entered text
-    /// @param initialValue the initial text, or null for an empty field
-    /// @param validators the input validators, or a null or empty array for none
-    public static CompletableFuture<String> prompt(@Nullable String title, FutureCallback<String> onResult, @Nullable String initialValue, ValidatorBase @Nullable ... validators) {
+    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult, String initialValue, ValidatorBase... validators) {
         InputDialogPane pane = new InputDialogPane(title, initialValue, onResult, validators);
         dialog(pane);
         return pane.getCompletableFuture();
     }
 
-    /// Shows questions that directly update the builder's question objects.
-    ///
-    /// The future completes with the builder's mutable question list when its callback resolves.
-    /// Rejection displays the reason; closing neither completes nor cancels the future,
-    /// and a pending callback may still resolve it.
-    /// Without a decorator, the future remains incomplete. See [#dialog(Region)].
     public static CompletableFuture<List<PromptDialogPane.Builder.Question<?>>> prompt(PromptDialogPane.Builder builder) {
         PromptDialogPane pane = new PromptDialogPane(builder);
         dialog(pane);
         return pane.getCompletableFuture();
     }
 
-    /// Creates a task dialog and submits its executor to the serial business-task queue.
-    ///
-    /// Submits the executor even if the pane cannot be shown, and returns the pane.
-    public static TaskExecutorDialogPane taskDialog(Task<?> task, @Nullable String title, TaskCancellationAction onCancel) {
-        return taskDialog(task, title, onCancel, null);
-    }
-
-    /// Creates and submits a task dialog, optionally as a required child of an executing task.
-    ///
-    /// @param task the task to execute
-    /// @param title the dialog title, or `null`
-    /// @param onCancel the cancellation action
-    /// @param parent the executing parent dialog, or `null` to queue an independent operation
-    /// @return the submitted task dialog
-    public static TaskExecutorDialogPane taskDialog(Task<?> task, @Nullable String title, TaskCancellationAction onCancel,
-                                                  @Nullable TaskExecutorDialogPane parent) {
-        TaskExecutor executor = task.executor();
+    public static TaskExecutorDialogPane taskDialog(TaskExecutor executor, String title, @NotNull TaskCancellationAction onCancel) {
         TaskExecutorDialogPane pane = new TaskExecutorDialogPane(onCancel);
         pane.setTitle(title);
         pane.setExecutor(executor);
         dialog(pane);
-        pane.startExecutor(parent);
         return pane;
     }
 
-    /// Navigates to the node using the standard navigation animation. Requires an initialized decorator.
+    public static TaskExecutorDialogPane taskDialog(Task<?> task, String title, @NotNull TaskCancellationAction onCancel) {
+        TaskExecutor executor = task.executor();
+        TaskExecutorDialogPane pane = taskDialog(executor, title, onCancel);
+        executor.start();
+        return pane;
+    }
+
     public static void navigate(Node node) {
-        decorator.navigate(node, ContainerAnimations.NAVIGATION);
+        decorator.navigate(node, ContainerAnimations.NAVIGATION, Motion.SHORT4, Motion.EASE);
     }
 
-    /// Navigates to the node using the forward animation. Requires an initialized decorator.
     public static void navigateForward(Node node) {
-        decorator.navigate(node, ContainerAnimations.FORWARD);
+        decorator.navigate(node, ContainerAnimations.FORWARD, Motion.SHORT4, Motion.EASE);
     }
 
-    /// Shows a toast in the main window. Requires an initialized decorator.
     public static void showToast(String content) {
         decorator.showToast(content);
     }
 
-    /// Shows `directoryChooser` with the current main window as its owner.
-    ///
-    /// @param directoryChooser the chooser to show
-    /// @return the selected directory, or `null` if the chooser is cancelled
-    public static @Nullable Path showDialog(DirectoryChooser directoryChooser) {
-        return FileUtils.toPath(directoryChooser.showDialog(getStage()));
-    }
-
-    /// Shows `fileChooser` for opening one file with the current main window as its owner.
-    ///
-    /// @param fileChooser the chooser to show
-    /// @return the selected file, or `null` if the chooser is cancelled
-    public static @Nullable Path showOpenDialog(FileChooser fileChooser) {
-        return FileUtils.toPath(fileChooser.showOpenDialog(getStage()));
-    }
-
-    /// Shows `fileChooser` for saving one file with the current main window as its owner.
-    ///
-    /// @param fileChooser the chooser to show
-    /// @return the selected file, or `null` if the chooser is cancelled
-    public static @Nullable Path showSaveDialog(FileChooser fileChooser) {
-        return FileUtils.toPath(fileChooser.showSaveDialog(getStage()));
-    }
-
-    /// Shows `fileChooser` for opening multiple files with the current main window as its owner.
-    ///
-    /// @param fileChooser the chooser to show
-    /// @return the selected files, or `null` if the chooser is cancelled
-    public static @Nullable List<Path> showOpenMultipleDialog(FileChooser fileChooser) {
-        return FileUtils.toPaths(fileChooser.showOpenMultipleDialog(getStage()));
-    }
-
-    /// Dispatches supported hmcl links or opens other links externally; ignores unknown internal links.
     public static void onHyperlinkAction(String href) {
         if (href.startsWith("hmcl://")) {
             switch (href) {
@@ -737,7 +703,7 @@ public final class Controllers {
                     break;
                 case "hmcl://game/launch":
                     var repository = GameDirectoryManager.getSelectedRepository();
-                    Instances.launch(repository.getSelectedInstance(), LauncherHelper::setKeep);
+                    Versions.launch(repository, repository.getSelectedInstance(), LauncherHelper::setKeep);
                     break;
             }
         } else {
@@ -745,55 +711,23 @@ public final class Controllers {
         }
     }
 
-    /// Offers to open the URI externally or copy it to the clipboard; does nothing for null.
-    public static void openUriOrCopy(@Nullable URI url) {
-        if (url == null) return;
-        openUriOrCopy(url.toString());
-    }
-
-    /// Offers to open the URI externally or copy it to the clipboard; does nothing for null.
-    public static void openUriOrCopy(@Nullable String url) {
-        if (url == null) return;
-        var dialog = new MessageDialogPane.Builder(
-                i18n("web.open_in_browser", url),
-                i18n("message.confirm"),
-                MessageDialogPane.MessageType.QUESTION
-        )
-                .addAction(i18n("button.copy"), () -> FXUtils.copyText(url))
-                .yesOrNo(() -> FXUtils.openLink(url), null)
-                .build();
-        dialog(dialog);
-    }
-
-    /// Returns whether no main-window decorator is retained, including before initialization and after shutdown.
     public static boolean isStopped() {
         return decorator == null;
     }
 
-    /// Detaches the main stage, clears cached page and decorator references, and clears the built-in image cache.
-    ///
-    /// The launcher-title property is retained. See [#onApplicationStop()] for detachment and thread requirements.
     public static void shutdown() {
-        onApplicationStop();
         rootPage = null;
-        gameInstancePage = null;
+        versionPage = null;
         gameListPage = null;
         downloadPage = null;
         accountListPage = null;
         settingsPage = null;
         terracottaPage = null;
         decorator = null;
+        stage = null;
+        scene = null;
+        onApplicationStop();
 
         FXUtils.shutdown();
-    }
-
-    /// Whether heap trimming is enabled; disabled by an HMCL_AUTO_TRIM_HEAP value equal to false, ignoring case.
-    public static final boolean AUTO_TRIM_HEAP = !"false".equalsIgnoreCase(System.getenv("HMCL_AUTO_TRIM_HEAP"));
-
-    /// Requests garbage collection if [#AUTO_TRIM_HEAP] is enabled.
-    public static void trimHeap() {
-        if (AUTO_TRIM_HEAP) {
-            System.gc();
-        }
     }
 }

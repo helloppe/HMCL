@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import com.jfoenix.controls.*;
@@ -10,29 +25,48 @@ import javafx.beans.binding.Bindings;
 import javafx.beans.binding.StringBinding;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.Property;
-import javafx.css.PseudoClass;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.*;
+import javafx.scene.control.ColorPicker;
+import javafx.scene.control.ContentDisplay;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
+import javafx.css.PseudoClass;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontSmoothingType;
 import javafx.stage.FileChooser;
 import org.glavo.monetfx.Brightness;
 import org.glavo.monetfx.ColorStyle;
 import org.glavo.uuid.UUIDs;
-import org.jackhuang.hmcl.setting.*;
-import org.jackhuang.hmcl.theme.*;
+import org.jackhuang.hmcl.setting.BackgroundType;
+import org.jackhuang.hmcl.setting.FontManager;
+import org.jackhuang.hmcl.setting.LauncherSettings;
+import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.setting.ThemeColorType;
+import org.jackhuang.hmcl.setting.UserSettings;
+import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
+import org.jackhuang.hmcl.theme.BuiltinBackground;
+import org.jackhuang.hmcl.theme.NetworkBackgroundImageCachePolicy;
+import org.jackhuang.hmcl.theme.Theme;
+import org.jackhuang.hmcl.theme.ThemeColor;
+import org.jackhuang.hmcl.theme.ThemeColorSource;
+import org.jackhuang.hmcl.theme.ThemePackExporter;
+import org.jackhuang.hmcl.theme.ThemePackManifest;
+import org.jackhuang.hmcl.theme.ThemePackManager;
+import org.jackhuang.hmcl.theme.ThemeReference;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.*;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.util.Holder;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.javafx.SafeStringConverter;
@@ -181,9 +215,9 @@ public class PersonalizationPage extends StackPane {
         refresh.invalidated(null);
     }
 
-    /// Binds a switch row to an inheritable theme appearance setting.
-    private static void bindThemeAppearanceSwitch(
-            LineSwitch button,
+    /// Binds a line toggle button to an inheritable theme appearance setting.
+    private static void bindThemeAppearanceToggleButton(
+            LineToggleButton button,
             String setting,
             BooleanProperty directProperty,
             Supplier<Boolean> effectiveValueSupplier) {
@@ -313,25 +347,20 @@ public class PersonalizationPage extends StackPane {
         String defaultPackId = "com.example.hmcl.theme-pack." + UUIDs.toCompactString(UUIDs.generateV7(exportTimestamp));
         String defaultPackName = LocalDateTime.ofInstant(exportTimestamp, ZoneId.systemDefault()).format(EXPORTED_THEME_NAME_FORMATTER);
 
-        String accountName = null;
-        {
-            var currentAccount = Accounts.getSelectedAccount();
-            if (currentAccount != null) accountName = currentAccount.getProfileName();
-        }
-        if (StringUtils.isBlank(accountName)) accountName = System.getProperty("user.name").trim();
-        String defaultAuthorName = StringUtils.isBlank(accountName) ? "Unknown" : accountName;
+        String userName = System.getProperty("user.name").trim();
+        String defaultAuthorName = StringUtils.isBlank(userName) ? "Unknown" : userName;
 
         PromptDialogPane.Builder.StringQuestion packNameQuestion = new PromptDialogPane.Builder.StringQuestion(
                 i18n("theme_pack.export.name"),
-                defaultPackName)
+                "")
                 .setPromptText(defaultPackName);
         PromptDialogPane.Builder.StringQuestion versionQuestion = new PromptDialogPane.Builder.StringQuestion(
                 i18n("theme_pack.export.version"),
-                ThemePackManager.CURRENT_THEME_PACK_VERSION)
+                "")
                 .setPromptText(ThemePackManager.CURRENT_THEME_PACK_VERSION);
         PromptDialogPane.Builder.StringQuestion authorNameQuestion = new PromptDialogPane.Builder.StringQuestion(
                 i18n("theme_pack.export.author"),
-                defaultAuthorName)
+                "")
                 .setPromptText(defaultAuthorName);
 
         Controllers.prompt(new PromptDialogPane.Builder(i18n("theme_pack.export.title"), (questions, handler) -> handler.resolve())
@@ -358,7 +387,7 @@ public class PersonalizationPage extends StackPane {
         chooser.getExtensionFilters().setAll(
                 new FileChooser.ExtensionFilter(i18n("theme_pack.file"), "*" + ThemePackExporter.FILE_EXTENSION));
 
-        @Nullable Path output = Controllers.showSaveDialog(chooser);
+        @Nullable Path output = FileUtils.toPath(chooser.showSaveDialog(Controllers.getStage()));
         if (output == null) {
             return;
         }
@@ -420,7 +449,7 @@ public class PersonalizationPage extends StackPane {
             LineSelectButton<String> brightnessPane = new LineSelectButton<>();
             brightnessPane.setTitle(i18n("settings.launcher.brightness"));
             brightnessPane.setConverter(name -> i18n("settings.launcher.brightness."
-                    + Objects.requireNonNullElse(name, "auto").trim().toLowerCase(Locale.ROOT)));
+                    + Objects.requireNonNullElse(name, "auto")));
             brightnessPane.setItems(Arrays.asList("auto", "light", "dark"));
             bindThemeAppearanceLineSelectButton(
                     brightnessPane,
@@ -684,17 +713,6 @@ public class PersonalizationPage extends StackPane {
                 }
                 updatingBackground.value = true;
                 try {
-                    builtinBackgroundComboBox.setValue(Objects.requireNonNullElse(
-                            settings().builtinBackgroundIdProperty().get(),
-                            BuiltinBackground.FALLBACK.id()));
-                    customBackgroundOption.setPath(Objects.toString(
-                            settings().customBackgroundImagePathProperty().get(),
-                            ""));
-                    networkBackgroundOption.setText(Objects.toString(
-                            settings().networkBackgroundImageUrlProperty().get(),
-                            ""));
-                    paintBackgroundOption.setPaint(settings().customBackgroundPaintProperty().get());
-
                     boolean overridden = settings().getThemeAppearanceOverrides().contains(
                             LauncherSettings.THEME_APPEARANCE_BACKGROUND);
                     ThemePackManager.ResolvedBackground background;
@@ -849,7 +867,7 @@ public class PersonalizationPage extends StackPane {
             });
             refreshBackground.invalidated(null);
 
-            LineSwitch networkBackgroundCacheButton = new LineSwitch();
+            LineToggleButton networkBackgroundCacheButton = new LineToggleButton();
             networkBackgroundCacheButton.setTitle(i18n("launcher.background.network.cache"));
             networkBackgroundCacheButton.setSelected(Objects.requireNonNullElse(
                     settings().networkBackgroundImageCachePolicyProperty().get(),
@@ -989,7 +1007,6 @@ public class PersonalizationPage extends StackPane {
 
                 Label textOpacity = new Label();
                 FXUtils.setLimitWidth(textOpacity, 50);
-                textOpacity.setAlignment(Pos.CENTER);
 
                 StringBinding valueBinding = Bindings.createStringBinding(() -> ((int) slider.getValue()) + "%", slider.valueProperty());
                 textOpacity.textProperty().bind(valueBinding);
@@ -1061,7 +1078,7 @@ public class PersonalizationPage extends StackPane {
 
         {
             String setting = LauncherSettings.THEME_APPEARANCE_TITLE_BAR_TRANSPARENT;
-            LineSwitch titleBarTransparentButton = new LineSwitch();
+            LineToggleButton titleBarTransparentButton = new LineToggleButton();
             titleBarTransparentButton.setTitle(i18n("settings.launcher.title_transparent"));
             JFXButton inheritButton = createThemeAppearanceOverrideButton();
             titleBarTransparentButton.setTitleTrailing(inheritButton);
@@ -1125,9 +1142,9 @@ public class PersonalizationPage extends StackPane {
             themeAppearanceList.getContent().add(titleBarTransparentButton);
         }
 
-        LineSwitch windowTransparentButton = new LineSwitch();
+        LineToggleButton windowTransparentButton = new LineToggleButton();
         windowTransparentButton.setTitle(i18n("settings.launcher.window_transparent"));
-        bindThemeAppearanceSwitch(
+        bindThemeAppearanceToggleButton(
                 windowTransparentButton,
                 LauncherSettings.THEME_APPEARANCE_WINDOW_TRANSPARENT,
                 settings().windowTransparentProperty(),
@@ -1152,10 +1169,9 @@ public class PersonalizationPage extends StackPane {
         {
             ComponentList appearanceList = new ComponentList();
 
-            LineSwitch animationButton = new LineSwitch();
+            LineToggleButton animationButton = new LineToggleButton();
             appearanceList.getContent().add(animationButton);
-            animationButton.setSelected(settings().isAnimationDisabled());
-            FXUtils.onChange(animationButton.selectedProperty(), value -> settings().animationDisabledProperty().set(value));
+            animationButton.selectedProperty().bindBidirectional(settings().animationDisabledProperty());
             animationButton.setTitle(i18n("settings.launcher.turn_off_animations"));
             animationButton.setSubtitle(i18n("settings.take_effect_after_restart"));
 
@@ -1242,7 +1258,7 @@ public class PersonalizationPage extends StackPane {
 
                 Label lblLogFontDisplay = new Label("[23:33:33] [Client Thread/INFO] [WaterPower]: Loaded mod WaterPower.");
                 lblLogFontDisplay.fontProperty().bind(Bindings.createObjectBinding(
-                        () -> Font.font(Objects.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT), settings().logFontSizeProperty().get()),
+                        () -> Font.font(Lang.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT), settings().logFontSizeProperty().get()),
                         settings().logFontFamilyProperty(), settings().logFontSizeProperty()));
 
                 logFontPane.getChildren().add(lblLogFontDisplay);

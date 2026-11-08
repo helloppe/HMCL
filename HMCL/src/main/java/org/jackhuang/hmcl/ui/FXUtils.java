@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui;
 
 import com.jfoenix.controls.*;
@@ -17,10 +32,10 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableBooleanValue;
 import javafx.beans.value.ObservableValue;
 import javafx.beans.value.WeakChangeListener;
-import javafx.collections.ObservableList;
 import javafx.collections.ObservableMap;
 import javafx.event.Event;
 import javafx.event.EventDispatcher;
+import javafx.event.EventHandler;
 import javafx.event.EventType;
 import javafx.geometry.Bounds;
 import javafx.geometry.Rectangle2D;
@@ -29,47 +44,45 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.skin.TableViewSkin;
 import javafx.scene.control.skin.VirtualFlow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.*;
-import javafx.scene.layout.*;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
-import javafx.stage.*;
+import javafx.stage.FileChooser;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
+import javafx.util.Callback;
 import javafx.util.Duration;
 import javafx.util.StringConverter;
 import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.download.DownloadCandidates;
 import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.CacheFileTask;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 import org.jackhuang.hmcl.ui.animation.Motion;
-import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.IconedMenuItem;
 import org.jackhuang.hmcl.ui.construct.MenuSeparator;
 import org.jackhuang.hmcl.ui.construct.PopupMenu;
 import org.jackhuang.hmcl.ui.image.ImageLoader;
 import org.jackhuang.hmcl.ui.image.ImageUtils;
-import org.jackhuang.hmcl.util.FXThread;
 import org.jackhuang.hmcl.util.Lang;
-import org.jackhuang.hmcl.util.Pair;
 import org.jackhuang.hmcl.util.ResourceNotFoundError;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
+import org.jackhuang.hmcl.util.javafx.ExtendedProperties;
 import org.jackhuang.hmcl.util.javafx.SafeStringConverter;
-import org.jackhuang.hmcl.util.javafx.Subscription;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.SystemUtils;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jsoup.Jsoup;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -92,10 +105,12 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.*;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -452,31 +467,25 @@ public final class FXUtils {
     private static final Duration TOOLTIP_SLOW_SHOW_DELAY = Duration.millis(500);
     private static final Duration TOOLTIP_SHOW_DURATION = Duration.millis(5000);
 
-    @FXThread
     public static void installTooltip(Node node, Duration showDelay, Duration showDuration, Duration hideDelay, Tooltip tooltip) {
-        checkFxUserThread();
         tooltip.setShowDelay(showDelay);
         tooltip.setShowDuration(showDuration);
         tooltip.setHideDelay(hideDelay);
         Tooltip.install(node, tooltip);
     }
 
-    @FXThread
     public static void installFastTooltip(Node node, Tooltip tooltip) {
-        installTooltip(node, TOOLTIP_FAST_SHOW_DELAY, TOOLTIP_SHOW_DURATION, Duration.ZERO, tooltip);
+        runInFX(() -> installTooltip(node, TOOLTIP_FAST_SHOW_DELAY, TOOLTIP_SHOW_DURATION, Duration.ZERO, tooltip));
     }
 
-    @FXThread
     public static void installFastTooltip(Node node, String tooltip) {
         installFastTooltip(node, new Tooltip(tooltip));
     }
 
-    @FXThread
     public static void installSlowTooltip(Node node, Tooltip tooltip) {
-        installTooltip(node, TOOLTIP_SLOW_SHOW_DELAY, TOOLTIP_SHOW_DURATION, Duration.ZERO, tooltip);
+        runInFX(() -> installTooltip(node, TOOLTIP_SLOW_SHOW_DELAY, TOOLTIP_SHOW_DURATION, Duration.ZERO, tooltip));
     }
 
-    @FXThread
     public static void installSlowTooltip(Node node, String tooltip) {
         installSlowTooltip(node, new Tooltip(tooltip));
     }
@@ -601,21 +610,21 @@ public final class FXUtils {
         if (link == null)
             return;
 
-        String url = NetworkUtils.encodeLocation(link);
+        String uri = NetworkUtils.encodeLocation(link);
         thread(() -> {
             try {
                 if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-                    Runtime.getRuntime().exec(new String[]{"rundll32.exe", "url.dll,FileProtocolHandler", url});
+                    Runtime.getRuntime().exec(new String[]{"rundll32.exe", "url.dll,FileProtocolHandler", uri});
                     return;
                 } else if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
-                    Runtime.getRuntime().exec(new String[]{"open", url});
+                    Runtime.getRuntime().exec(new String[]{"open", uri});
                     return;
                 } else {
                     for (String browser : linuxBrowsers) {
                         Path path = SystemUtils.which(browser);
                         if (path != null) {
                             try {
-                                Runtime.getRuntime().exec(new String[]{path.toString(), url});
+                                Runtime.getRuntime().exec(new String[]{path.toString(), uri});
                                 return;
                             } catch (Throwable ignored) {
                             }
@@ -628,7 +637,7 @@ public final class FXUtils {
             }
 
             try {
-                java.awt.Desktop.getDesktop().browse(new URI(url));
+                java.awt.Desktop.getDesktop().browse(new URI(uri));
             } catch (Throwable e) {
                 LOG.warning("Failed to open link: " + link, e);
             }
@@ -714,6 +723,116 @@ public final class FXUtils {
             T value = property.getValue();
             textField.setText(converter == null ? (String) value : converter.toString(value));
         }
+    }
+
+    private static final class EnumBidirectionalBinding<E extends Enum<E>> implements InvalidationListener, WeakListener {
+        private final WeakReference<JFXComboBox<E>> comboBoxRef;
+        private final WeakReference<Property<E>> propertyRef;
+        private final int hashCode;
+
+        private boolean updating = false;
+
+        private EnumBidirectionalBinding(JFXComboBox<E> comboBox, Property<E> property) {
+            this.comboBoxRef = new WeakReference<>(comboBox);
+            this.propertyRef = new WeakReference<>(property);
+            this.hashCode = System.identityHashCode(comboBox) ^ System.identityHashCode(property);
+        }
+
+        @Override
+        public void invalidated(Observable sourceProperty) {
+            if (!updating) {
+                final JFXComboBox<E> comboBox = comboBoxRef.get();
+                final Property<E> property = propertyRef.get();
+
+                if (comboBox == null || property == null) {
+                    if (comboBox != null) {
+                        comboBox.getSelectionModel().selectedItemProperty().removeListener(this);
+                    }
+
+                    if (property != null) {
+                        property.removeListener(this);
+                    }
+                } else {
+                    updating = true;
+                    try {
+                        if (property == sourceProperty) {
+                            E newValue = property.getValue();
+                            comboBox.getSelectionModel().select(newValue);
+                        } else {
+                            E newValue = comboBox.getSelectionModel().getSelectedItem();
+                            property.setValue(newValue);
+                        }
+                    } finally {
+                        updating = false;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean wasGarbageCollected() {
+            return comboBoxRef.get() == null || propertyRef.get() == null;
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o)
+                return true;
+            if (!(o instanceof EnumBidirectionalBinding))
+                return false;
+
+            EnumBidirectionalBinding<?> that = (EnumBidirectionalBinding<?>) o;
+
+            final JFXComboBox<E> comboBox = this.comboBoxRef.get();
+            final Property<E> property = this.propertyRef.get();
+
+            final JFXComboBox<?> thatComboBox = that.comboBoxRef.get();
+            final Property<?> thatProperty = that.propertyRef.get();
+
+            if (comboBox == null || property == null || thatComboBox == null || thatProperty == null)
+                return false;
+
+            return comboBox == thatComboBox && property == thatProperty;
+        }
+    }
+
+    /**
+     * Bind combo box selection with given enum property bidirectionally.
+     * You should <b>only and always</b> use {@code bindEnum} as well as {@code unbindEnum} at the same time.
+     *
+     * @param comboBox the combo box being bound with {@code property}.
+     * @param property the property being bound with {@code combo box}.
+     * @see #unbindEnum(JFXComboBox, Property)
+     * @see ExtendedProperties#selectedItemPropertyFor(ComboBox)
+     */
+    public static <T extends Enum<T>> void bindEnum(JFXComboBox<T> comboBox, Property<T> property) {
+        EnumBidirectionalBinding<T> binding = new EnumBidirectionalBinding<>(comboBox, property);
+
+        comboBox.getSelectionModel().selectedItemProperty().removeListener(binding);
+        property.removeListener(binding);
+
+        comboBox.getSelectionModel().select(property.getValue());
+        comboBox.getSelectionModel().selectedItemProperty().addListener(binding);
+        property.addListener(binding);
+    }
+
+    /**
+     * Unbind combo box selection with given enum property bidirectionally.
+     * You should <b>only and always</b> use {@code bindEnum} as well as {@code unbindEnum} at the same time.
+     *
+     * @param comboBox the combo box being bound with the property which can be inferred by {@code bindEnum}.
+     * @see #bindEnum(JFXComboBox, Property)
+     * @see ExtendedProperties#selectedItemPropertyFor(ComboBox)
+     */
+    public static <T extends Enum<T>> void unbindEnum(JFXComboBox<T> comboBox, Property<T> property) {
+        EnumBidirectionalBinding<T> binding = new EnumBidirectionalBinding<>(comboBox, property);
+        comboBox.getSelectionModel().selectedItemProperty().removeListener(binding);
+        property.removeListener(binding);
     }
 
     private static final class PaintBidirectionalBinding implements InvalidationListener, WeakListener {
@@ -810,7 +929,147 @@ public final class FXUtils {
         property.addListener(binding);
     }
 
-    public static List<Subscription> bindAllEnabled(BooleanProperty allEnabled, BooleanProperty... children) {
+    private static final class WindowsSizeBidirectionalBinding implements InvalidationListener, WeakListener {
+        private final WeakReference<JFXComboBox<String>> comboBoxRef;
+        private final WeakReference<IntegerProperty> widthPropertyRef;
+        private final WeakReference<IntegerProperty> heightPropertyRef;
+
+        private final int hashCode;
+
+        private boolean updating = false;
+
+        private WindowsSizeBidirectionalBinding(JFXComboBox<String> comboBox,
+                                                IntegerProperty widthProperty,
+                                                IntegerProperty heightProperty) {
+            this.comboBoxRef = new WeakReference<>(comboBox);
+            this.widthPropertyRef = new WeakReference<>(widthProperty);
+            this.heightPropertyRef = new WeakReference<>(heightProperty);
+            this.hashCode = System.identityHashCode(comboBox)
+                    ^ System.identityHashCode(widthProperty)
+                    ^ System.identityHashCode(heightProperty);
+        }
+
+        @Override
+        public void invalidated(Observable observable) {
+            if (!updating) {
+                var comboBox = this.comboBoxRef.get();
+                var widthProperty = this.widthPropertyRef.get();
+                var heightProperty = this.heightPropertyRef.get();
+
+                if (comboBox == null || widthProperty == null || heightProperty == null) {
+                    if (comboBox != null) {
+                        comboBox.focusedProperty().removeListener(this);
+                        comboBox.sceneProperty().removeListener(this);
+                    }
+                    if (widthProperty != null)
+                        widthProperty.removeListener(this);
+                    if (heightProperty != null)
+                        heightProperty.removeListener(this);
+                } else {
+                    updating = true;
+                    try {
+                        int width = widthProperty.get();
+                        int height = heightProperty.get();
+
+                        if (observable instanceof ReadOnlyProperty<?>
+                                && ((ReadOnlyProperty<?>) observable).getBean() == comboBox) {
+                            String value = comboBox.valueProperty().get();
+                            if (value == null)
+                                value = "";
+                            int idx = value.indexOf('x');
+                            if (idx < 0)
+                                idx = value.indexOf('*');
+
+                            if (idx < 0) {
+                                LOG.warning("Bad window size: " + value);
+                                comboBox.setValue(width + "x" + height);
+                                return;
+                            }
+
+                            String widthStr = value.substring(0, idx).trim();
+                            String heightStr = value.substring(idx + 1).trim();
+
+                            int newWidth;
+                            int newHeight;
+                            try {
+                                newWidth = Integer.parseInt(widthStr);
+                                newHeight = Integer.parseInt(heightStr);
+                            } catch (NumberFormatException e) {
+                                LOG.warning("Bad window size: " + value);
+                                comboBox.setValue(width + "x" + height);
+                                return;
+                            }
+
+                            widthProperty.set(newWidth);
+                            heightProperty.set(newHeight);
+                        } else {
+                            comboBox.setValue(width + "x" + height);
+                        }
+                    } finally {
+                        updating = false;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean wasGarbageCollected() {
+            return this.comboBoxRef.get() == null
+                    || this.widthPropertyRef.get() == null
+                    || this.heightPropertyRef.get() == null;
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj)
+                return true;
+            if (!(obj instanceof WindowsSizeBidirectionalBinding))
+                return false;
+
+            var that = (WindowsSizeBidirectionalBinding) obj;
+
+            var comboBox = this.comboBoxRef.get();
+            var widthProperty = this.widthPropertyRef.get();
+            var heightProperty = this.heightPropertyRef.get();
+
+            var thatComboBox = that.comboBoxRef.get();
+            var thatWidthProperty = that.widthPropertyRef.get();
+            var thatHeightProperty = that.heightPropertyRef.get();
+
+            if (comboBox == null || widthProperty == null || heightProperty == null
+                    || thatComboBox == null || thatWidthProperty == null || thatHeightProperty == null) {
+                return false;
+            }
+
+            return comboBox == thatComboBox
+                    && widthProperty == thatWidthProperty
+                    && heightProperty == thatHeightProperty;
+        }
+    }
+
+    public static void bindWindowsSize(JFXComboBox<String> comboBox, IntegerProperty widthProperty, IntegerProperty heightProperty) {
+        comboBox.setValue(widthProperty.get() + "x" + heightProperty.get());
+        var binding = new WindowsSizeBidirectionalBinding(comboBox, widthProperty, heightProperty);
+        comboBox.focusedProperty().addListener(binding);
+        comboBox.sceneProperty().addListener(binding);
+        widthProperty.addListener(binding);
+        heightProperty.addListener(binding);
+    }
+
+    public static void unbindWindowsSize(JFXComboBox<String> comboBox, IntegerProperty widthProperty, IntegerProperty heightProperty) {
+        var binding = new WindowsSizeBidirectionalBinding(comboBox, widthProperty, heightProperty);
+        comboBox.focusedProperty().removeListener(binding);
+        comboBox.sceneProperty().removeListener(binding);
+        widthProperty.removeListener(binding);
+        heightProperty.removeListener(binding);
+    }
+
+    public static void bindAllEnabled(BooleanProperty allEnabled, BooleanProperty... children) {
         int itemCount = children.length;
         int childSelectedCount = 0;
         for (BooleanProperty child : children) {
@@ -820,46 +1079,49 @@ public final class FXUtils {
 
         allEnabled.set(childSelectedCount == itemCount);
 
-        class AllListener {
+        class Listener implements InvalidationListener {
             private int childSelectedCount;
             private boolean updating = false;
-            private final List<Subscription> subscriptions = new ArrayList<>(children.length + 1);
 
-            public AllListener(int childSelectedCount) {
+            public Listener(int childSelectedCount) {
                 this.childSelectedCount = childSelectedCount;
             }
 
-            {
-                subscriptions.add(Subscription.subscribe(allEnabled, () -> {
-                    if (updating) return;
-                    updating = true;
-                    try {
-                        boolean value = allEnabled.get();
+            @Override
+            public void invalidated(Observable observable) {
+                if (updating)
+                    return;
+
+                updating = true;
+                try {
+                    boolean value = ((BooleanProperty) observable).get();
+
+                    if (observable == allEnabled) {
                         for (BooleanProperty child : children) {
-                            child.set(value);
+                            child.setValue(value);
                         }
                         childSelectedCount = value ? itemCount : 0;
-                    } finally {
-                        updating = false;
+                    } else {
+                        if (value)
+                            childSelectedCount++;
+                        else
+                            childSelectedCount--;
+
+                        allEnabled.set(childSelectedCount == itemCount);
                     }
-                }));
-                for (var child : children) {
-                    subscriptions.add(Subscription.subscribe(child, () -> {
-                        if (updating) return;
-                        updating = true;
-                        try {
-                            if (child.get()) childSelectedCount++;
-                            else childSelectedCount--;
-                            allEnabled.set(childSelectedCount == itemCount);
-                        } finally {
-                            updating = false;
-                        }
-                    }));
+                } finally {
+                    updating = false;
                 }
             }
         }
 
-        return new AllListener(childSelectedCount).subscriptions;
+        InvalidationListener listener = new Listener(childSelectedCount);
+
+        WeakInvalidationListener weakListener = new WeakInvalidationListener(listener);
+        allEnabled.addListener(listener);
+        for (BooleanProperty child : children) {
+            child.addListener(weakListener);
+        }
     }
 
     public static void setIcon(Stage stage) {
@@ -986,9 +1248,8 @@ public final class FXUtils {
                 .setSignificance(Task.TaskSignificance.MINOR);
     }
 
-    /// Creates a task that caches an image from HTTP(S) candidates and loads it with the requested sizing options.
-    public static Task<Image> getRemoteImageTask(DownloadCandidates candidates, int requestedWidth, int requestedHeight, boolean preserveRatio, boolean smooth) {
-        return new CacheFileTask(candidates)
+    public static Task<Image> getRemoteImageTask(List<URI> uris, int requestedWidth, int requestedHeight, boolean preserveRatio, boolean smooth) {
+        return new CacheFileTask(uris)
                 .setSignificance(Task.TaskSignificance.MINOR)
                 .thenApplyAsync(file -> loadImage(file, requestedWidth, requestedHeight, preserveRatio, smooth))
                 .setSignificance(Task.TaskSignificance.MINOR);
@@ -1062,28 +1323,27 @@ public final class FXUtils {
 
     private static final String LABEL_FULL_TEXT_PROP_KEY = FXUtils.class.getName() + ".LABEL_FULL_TEXT";
 
-    private static final ChangeListener<Boolean> TEXT_TRUNCATED_LISTENER = (observable, oldValue, newValue) -> {
-        var label = (Labeled) ((ReadOnlyProperty<?>) observable).getBean();
-        var tooltip = (Tooltip) label.getProperties().get(LABEL_FULL_TEXT_PROP_KEY);
-
-        if (newValue) {
-            if (tooltip == null) {
-                tooltip = new Tooltip();
-                tooltip.textProperty().bind(label.textProperty());
-                label.getProperties().put(LABEL_FULL_TEXT_PROP_KEY, tooltip);
-            }
-
-            FXUtils.installFastTooltip(label, tooltip);
-        } else if (tooltip != null) {
-            Tooltip.uninstall(label, tooltip);
-        }
-    };
-
     public static void showTooltipWhenTruncated(Labeled labeled) {
         ReadOnlyBooleanProperty textTruncatedProperty = textTruncatedProperty(labeled);
         if (textTruncatedProperty != null) {
-            TEXT_TRUNCATED_LISTENER.changed(textTruncatedProperty, false, textTruncatedProperty.get());
-            textTruncatedProperty.addListener(TEXT_TRUNCATED_LISTENER);
+            ChangeListener<Boolean> listener = (observable, oldValue, newValue) -> {
+                var label = (Labeled) ((ReadOnlyProperty<?>) observable).getBean();
+                var tooltip = (Tooltip) label.getProperties().get(LABEL_FULL_TEXT_PROP_KEY);
+
+                if (newValue) {
+                    if (tooltip == null) {
+                        tooltip = new Tooltip();
+                        tooltip.textProperty().bind(label.textProperty());
+                        label.getProperties().put(LABEL_FULL_TEXT_PROP_KEY, tooltip);
+                    }
+
+                    FXUtils.installFastTooltip(label, tooltip);
+                } else if (tooltip != null) {
+                    Tooltip.uninstall(label, tooltip);
+                }
+            };
+            listener.changed(textTruncatedProperty, false, textTruncatedProperty.get());
+            textTruncatedProperty.addListener(listener);
         }
     }
 
@@ -1126,6 +1386,20 @@ public final class FXUtils {
             @Override
             public T fromString(String string) {
                 throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    public static <T> Callback<ListView<T>, ListCell<T>> jfxListCellFactory(Function<T, Node> graphicBuilder) {
+        return view -> new JFXListCell<T>() {
+            @Override
+            public void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+
+                if (!empty) {
+                    setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+                    setGraphic(graphicBuilder.apply(item));
+                }
             }
         };
     }
@@ -1182,33 +1456,22 @@ public final class FXUtils {
         });
     }
 
-    public static void onDoubleClicked(Node node, Runnable action) {
-        node.addEventHandler(MouseEvent.MOUSE_CLICKED, e -> {
-            if (e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
-                action.run();
-                e.consume();
-            }
-        });
-    }
-
-    public static void addMacOSCloseWindowHandler(Window window, @Nullable Supplier<Boolean> restriction) {
-        window.addEventHandler(KeyEvent.KEY_PRESSED, event -> {
-            if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS
-                    && event.isMetaDown()
-                    && event.getCode() == KeyCode.W
-                    && (restriction == null || restriction.get())) {
-                window.fireEvent(new WindowEvent(window, WindowEvent.WINDOW_CLOSE_REQUEST));
-                event.consume();
-            }
-        });
-    }
-
     public static <N extends Parent> N prepareNode(N node) {
         Scene dummyScene = new Scene(node);
         StyleSheets.init(dummyScene);
         node.applyCss();
         node.layout();
         return node;
+    }
+
+    public static void prepareOnMouseEnter(Node node, Runnable action) {
+        node.addEventFilter(MouseEvent.MOUSE_ENTERED, new EventHandler<>() {
+            @Override
+            public void handle(MouseEvent e) {
+                node.removeEventFilter(MouseEvent.MOUSE_ENTERED, this);
+                action.run();
+            }
+        });
     }
 
     public static <T> void onScroll(Node node, List<T> list,
@@ -1251,34 +1514,6 @@ public final class FXUtils {
     public static void copyText(String text, @Nullable String toastMessage) {
         ClipboardContent content = new ClipboardContent();
         content.putString(text);
-        Clipboard.getSystemClipboard().setContent(content);
-
-        if (toastMessage != null && !Controllers.isStopped()) {
-            Controllers.showToast(toastMessage);
-        }
-    }
-
-    public static void copyFiles(List<Path> paths) {
-        copyFiles(paths.stream().map(Path::toFile).toList(), i18n("message.copied"));
-    }
-
-    public static void copyFiles(List<File> files, @Nullable String toastMessage) {
-        ClipboardContent content = new ClipboardContent();
-        content.putFiles(files);
-        Clipboard.getSystemClipboard().setContent(content);
-
-        if (toastMessage != null && !Controllers.isStopped()) {
-            Controllers.showToast(toastMessage);
-        }
-    }
-
-    public static void copyImage(Image image) {
-        copyImage(image, i18n("message.copied"));
-    }
-
-    public static void copyImage(Image image, @Nullable String toastMessage) {
-        ClipboardContent content = new ClipboardContent();
-        content.putImage(image);
         Clipboard.getSystemClipboard().setContent(content);
 
         if (toastMessage != null && !Controllers.isStopped()) {
@@ -1477,113 +1712,5 @@ public final class FXUtils {
 
             e.consume();
         });
-    }
-
-    public static TextFlow renderAddonChangelog(String changelogHtml, String baseUri) {
-        var textFlow = new HTMLRenderer(Controllers::openUriOrCopy).appendNode(Jsoup.parse(changelogHtml, baseUri)).mergeLineBreaks().render();
-        textFlow.getStyleClass().add("addon-changelog");
-        return textFlow;
-    }
-
-    /// Be cautious when dealing with large amounts of data
-    public static <S> TableView<S> newAutoHeightTable(ObservableList<S> items) {
-        return new AutoHeightTableView<>(items);
-    }
-
-    private static final class AutoHeightTableView<S> extends TableView<S> {
-
-        public AutoHeightTableView() {
-            super();
-        }
-
-        public AutoHeightTableView(ObservableList<S> items) {
-            super(items);
-        }
-
-        @Override
-        protected Skin<?> createDefaultSkin() {
-            return new AutoSizeSkin<>(this);
-        }
-
-        private static final class AutoSizeSkin<S> extends TableViewSkin<S> {
-
-            private final VirtualFlow<TableRow<S>> flow;
-
-            public AutoSizeSkin(TableView<S> control) {
-                super(control);
-                this.flow = getVirtualFlow();
-            }
-
-            @Override
-            protected double computePrefHeight(double width, double topInset, double rightInset, double bottomInset, double leftInset) {
-                double fixedCellSize = getSkinnable().getFixedCellSize();
-                double w = width - rightInset - leftInset;
-                int itemCount = getItemCount();
-                double headerHeight = getTableHeaderRow().prefHeight(w);
-
-                double prefHeight = topInset + bottomInset + headerHeight;
-                if (fixedCellSize > 0 || itemCount == 0) return prefHeight + fixedCellSize * itemCount;
-                int i = 0;
-                TableRow<S> r;
-                while (i < itemCount && !(r = flow.getCell(i)).isEmpty() && r.getItem() != null) {
-                    prefHeight += r.prefHeight(w);
-                    i++;
-                }
-                return prefHeight;
-            }
-
-        }
-
-    }
-
-    public static void chooseDateRange(Consumer<@NotNull Pair<@Nullable LocalDate, @Nullable LocalDate>> onConfirm) {
-        Controllers.dialog(new DateRangeDialog(onConfirm));
-    }
-
-    private static class DateRangeDialog extends JFXDialogLayout {
-
-        private final JFXDatePicker fromPicker, toPicker;
-
-        public DateRangeDialog(Consumer<Pair<LocalDate, LocalDate>> onConfirm) {
-            super();
-
-            setHeading(new Label(i18n("button.select_date")));
-
-            GridPane body = new GridPane();
-            body.setHgap(4);
-            body.setVgap(8);
-            {
-                Label fromLabel = new Label(i18n("button.select_date.from"));
-                this.fromPicker = new JFXDatePicker(LocalDate.now());
-                fromPicker.setOverLay(true);
-                fromPicker.setDialogParent(Controllers.getDecorator().getDialogContainer());
-                body.add(fromLabel, 0, 0);
-                body.add(fromPicker, 1, 0);
-            }
-            {
-                Label toLabel = new Label(i18n("button.select_date.to"));
-                this.toPicker = new JFXDatePicker(LocalDate.now());
-                toPicker.setOverLay(true);
-                toPicker.setDialogParent(Controllers.getDecorator().getDialogContainer());
-                body.add(toLabel, 0, 1);
-                body.add(toPicker, 1, 1);
-            }
-            setBody(body);
-
-            JFXButton cancelButton = new JFXButton(i18n("button.cancel"));
-            cancelButton.getStyleClass().add("dialog-cancel");
-            cancelButton.setOnAction(e -> fireEvent(new DialogCloseEvent()));
-
-            JFXButton okButton = new JFXButton(i18n("button.ok"));
-            okButton.getStyleClass().add("dialog-accept");
-            okButton.setOnAction(e -> {
-                if (onConfirm != null) onConfirm.accept(Pair.pair(fromPicker.getValue(), toPicker.getValue()));
-                fireEvent(new DialogCloseEvent());
-            });
-
-            setActions(cancelButton, okButton);
-            onEscPressed(this, cancelButton::fire);
-        }
-
     }
 }

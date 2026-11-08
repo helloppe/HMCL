@@ -1,14 +1,30 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack.multimc;
 
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
-
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
 import org.jackhuang.hmcl.game.*;
 import org.jackhuang.hmcl.util.Immutable;
 import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.StringUtils;
+import org.jackhuang.hmcl.util.gson.JsonMap;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
@@ -184,7 +200,7 @@ public final class MultiMCInstancePatch {
     }
 
     public static final class ResolvedInstance {
-        private final GameInstanceManifest manifest;
+        private final Version version;
 
         private final String gameVersion;
 
@@ -193,16 +209,16 @@ public final class MultiMCInstancePatch {
         private final List<String> jarModFileNames;
         private final List<Library> mavenOnlyFiles;
 
-        public ResolvedInstance(GameInstanceManifest manifest, String gameVersion, Library mainJar, List<String> jarModFileNames, List<Library> mavenOnlyFiles) {
-            this.manifest = manifest;
+        public ResolvedInstance(Version version, String gameVersion, Library mainJar, List<String> jarModFileNames, List<Library> mavenOnlyFiles) {
+            this.version = version;
             this.gameVersion = gameVersion;
             this.mainJar = mainJar;
             this.jarModFileNames = jarModFileNames;
             this.mavenOnlyFiles = mavenOnlyFiles;
         }
 
-        public GameInstanceManifest getManifest() {
-            return manifest;
+        public Version getVersion() {
+            return version;
         }
 
         public String getGameVersion() {
@@ -229,10 +245,10 @@ public final class MultiMCInstancePatch {
      * See to do marks below for more information</p>
      *
      * @param patches   List of all Json-Patch.
-     * @param instanceId the version ID. Used when constructing a manifest.
+     * @param versionID the version ID. Used when constructing a Version.
      * @return The resolved instance.
      */
-    public static ResolvedInstance resolveArtifact(List<MultiMCInstancePatch> patches, GameInstanceID instanceId) {
+    public static ResolvedInstance resolveArtifact(List<MultiMCInstancePatch> patches, String versionID) {
         if (patches.isEmpty()) {
             throw new IllegalArgumentException("Empty components.");
         }
@@ -274,7 +290,7 @@ public final class MultiMCInstancePatch {
             tweakers = last.getTweakers();
             libraries = last.getLibraries();
             mavenOnlyFiles = last.getMavenOnlyFiles();
-            jarModFileNames = last.getJarMods().stream().map(library -> library.filename()).collect(Collectors.toList());
+            jarModFileNames = last.getJarMods().stream().map(Library::getFileName).collect(Collectors.toList());
         }
 
         for (int i = patches.size() - 2; i >= 0; i--) {
@@ -293,10 +309,10 @@ public final class MultiMCInstancePatch {
             tweakers = Lang.merge(patch.getTweakers(), tweakers);
             libraries = Lang.merge(patch.getLibraries(), libraries);
             mavenOnlyFiles = Lang.merge(patch.getMavenOnlyFiles(), mavenOnlyFiles);
-            jarModFileNames = Lang.merge(patch.getJarMods().stream().map(library -> library.filename()).collect(Collectors.toList()), jarModFileNames);
+            jarModFileNames = Lang.merge(patch.getJarMods().stream().map(Library::getFileName).collect(Collectors.toList()), jarModFileNames);
         }
 
-        mainClass = Objects.requireNonNullElse(mainClass, "net.minecraft.client.Minecraft");
+        mainClass = Lang.requireNonNullElse(mainClass, "net.minecraft.client.Minecraft");
 
         if (minecraftArguments == null) {
             minecraftArguments = new ArrayList<>();
@@ -345,13 +361,13 @@ public final class MultiMCInstancePatch {
         }
 
         for (Library library : libraries) {
-            Artifact artifact = library.artifact();
+            Artifact artifact = library.getArtifact();
             if ("io.github.zekerzhayard".equals(artifact.getGroup()) && "ForgeWrapper".equals(artifact.getName())) {
                 jvmArguments.add(new StringArgument("-Dforgewrapper.librariesDir=${library_directory}"));
                 jvmArguments.add(new StringArgument("-Dforgewrapper.minecraft=${primary_jar}"));
 
                 for (Library lib : libraries) {
-                    Artifact ar = lib.artifact();
+                    Artifact ar = lib.getArtifact();
                     if ("net.neoforged".equals(ar.getGroup()) && "neoforge".equals(ar.getName()) && "installer".equals(ar.getClassifier()) ||
                             "net.minecraftforge".equals(ar.getGroup()) && "forge".equals(ar.getName()) && "installer".equals(ar.getClassifier())
                     ) {
@@ -370,12 +386,12 @@ public final class MultiMCInstancePatch {
             mainClass = "org.jackhuang.hmcl.HMCLMultiMCBootstrap";
         }
 
-        GameInstanceManifest version = new GameInstanceManifest(instanceId)
-                .withArguments(new Arguments().addGameArguments(minecraftArguments).addJVMArgumentsDirect(jvmArguments))
-                .withMainClass(mainClass)
-                .withLibraries(libraries)
-                .withAssetIndex(assetIndex)
-                .withDownloads(Collections.singletonMap(DownloadType.CLIENT, mainJar.getRawDownloadInfo()));
+        Version version = new Version(versionID)
+                .setArguments(new Arguments().addGameArguments(minecraftArguments).addJVMArgumentsDirect(jvmArguments))
+                .setMainClass(mainClass)
+                .setLibraries(libraries)
+                .setAssetIndex(assetIndex)
+                .setDownload(new JsonMap<>(Collections.singletonMap(DownloadType.CLIENT, mainJar.getRawDownloadInfo())));
 
         /* TODO: Official Version-Json can only store one pre-defined GameJavaVersion, including 8, 11, 16, 17 and 21.
             An array of all suitable java versions are NOT supported.
@@ -388,7 +404,7 @@ public final class MultiMCInstancePatch {
             for (int i = javaMajors.length - 1; i >= 0; i--) {
                 GameJavaVersion jv = GameJavaVersion.get(javaMajors[i]);
                 if (jv != null) {
-                    version = version.withJavaVersion(jv);
+                    version = version.setJavaVersion(jv);
                     break javaMajors;
                 }
             }
@@ -396,9 +412,11 @@ public final class MultiMCInstancePatch {
             message.append(" - Java Version Range: ").append(Arrays.toString(javaMajors)).append('\n');
         }
 
+        version = version.markAsResolved();
+
         String gameVersion = null;
         for (MultiMCInstancePatch patch : patches) {
-            if (MultiMCComponents.getComponent(patch.getID()) == GameComponentType.GAME) {
+            if (MultiMCComponents.getComponent(patch.getID()) == LibraryAnalyzer.LibraryType.MINECRAFT) {
                 gameVersion = patch.getVersion();
                 break;
             }

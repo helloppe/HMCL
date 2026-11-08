@@ -21,7 +21,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ComboBoxBase;
 import javafx.scene.control.ListView;
-import javafx.scene.control.skin.VirtualFlow;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -29,7 +28,6 @@ import javafx.scene.paint.Paint;
 import javafx.scene.text.Text;
 import javafx.scene.transform.Scale;
 import javafx.util.Duration;
-import org.jackhuang.hmcl.ui.FXUtils;
 
 import java.util.List;
 
@@ -179,11 +177,6 @@ public class JFXComboBoxListViewSkin<T> extends ComboBoxListViewSkin<T> {
                     }
 
                     comboBox.hide();
-                });
-                Platform.runLater(() -> {
-                    if (listView.lookup(".virtual-flow") instanceof VirtualFlow<?> virtualFlow) {
-                        FXUtils.smoothScrolling(virtualFlow);
-                    }
                 });
             }
         }

@@ -1,26 +1,43 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.addon.mod;
 
-import javafx.beans.property.ReadOnlyBooleanProperty;
-import javafx.beans.property.ReadOnlyBooleanWrapper;
-import org.jackhuang.hmcl.addon.AddonLoader;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import org.jackhuang.hmcl.addon.LocalAddonFile;
 import org.jackhuang.hmcl.addon.LocalAddonManager;
-import org.jackhuang.hmcl.addon.update.AddonUpdateConditions;
+import org.jackhuang.hmcl.addon.RemoteAddon;
+import org.jackhuang.hmcl.addon.RemoteAddonRepository;
+import org.jackhuang.hmcl.download.DownloadProvider;
 import org.jackhuang.hmcl.util.io.FileUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.stream.Collectors;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
  *
  * @author huangyuhui
  */
-public final class LocalModFile extends LocalAddonFile<LocalModFile> {
+public final class LocalModFile extends LocalAddonFile implements Comparable<LocalModFile> {
 
     private Path file;
     private final ModManager modManager;
@@ -33,7 +50,7 @@ public final class LocalModFile extends LocalAddonFile<LocalModFile> {
     private final String url;
     private final String fileName;
     private final String logoPath;
-    private final ReadOnlyBooleanWrapper activeProperty;
+    private final BooleanProperty activeProperty;
 
     public LocalModFile(ModManager modManager, LocalMod mod, Path file, String name, Description description) {
         this(modManager, mod, file, name, description, "", "", "", "", "");
@@ -52,7 +69,23 @@ public final class LocalModFile extends LocalAddonFile<LocalModFile> {
         this.url = url;
         this.logoPath = logoPath;
 
-        activeProperty = new ReadOnlyBooleanWrapper(this, "active", !modManager.isDisabled(file));
+        activeProperty = new SimpleBooleanProperty(this, "active", !modManager.isDisabled(file)) {
+            @Override
+            protected void invalidated() {
+                if (isOld()) return;
+
+                Path path = LocalModFile.this.file.toAbsolutePath();
+
+                try {
+                    if (get())
+                        LocalModFile.this.file = modManager.enableMod(path);
+                    else
+                        LocalModFile.this.file = modManager.disableMod(path);
+                } catch (IOException e) {
+                    LOG.error("Unable to invert state of mod file " + path, e);
+                }
+            }
+        };
 
         fileName = FileUtils.getNameWithoutExtension(LocalAddonManager.getLocalAddonName(file));
 
@@ -112,21 +145,15 @@ public final class LocalModFile extends LocalAddonFile<LocalModFile> {
         return logoPath;
     }
 
-    public ReadOnlyBooleanProperty activeProperty() {
-        return activeProperty.getReadOnlyProperty();
+    public BooleanProperty activeProperty() {
+        return activeProperty;
     }
 
     public boolean isActive() {
         return activeProperty.get();
     }
 
-    public void setActive(boolean active) throws IOException {
-        if (isOld() || active == isActive()) {
-            return;
-        }
-
-        Path path = file.toAbsolutePath();
-        file = active ? modManager.enableMod(path) : modManager.disableMod(path);
+    public void setActive(boolean active) {
         activeProperty.set(active);
     }
 
@@ -168,8 +195,24 @@ public final class LocalModFile extends LocalAddonFile<LocalModFile> {
     }
 
     @Override
-    protected AddonUpdateConditions getTargetVersionRestrictions() {
-        return new AddonUpdateConditions(v -> v.loaders().stream().map(AddonLoader::type).collect(Collectors.toSet()).contains(getModLoaderType()));
+    public AddonUpdate checkUpdates(DownloadProvider downloadProvider, String gameVersion, RemoteAddon.Source source) throws IOException {
+        RemoteAddonRepository repository = source.getRepoForType(RemoteAddonRepository.Type.MOD);
+        if (repository == null) return null;
+        Optional<RemoteAddon.Version> currentVersion = repository.getRemoteVersionByLocalFile(file);
+        if (currentVersion.isEmpty()) return null;
+        List<RemoteAddon.Version> remoteVersions = repository.getRemoteVersionsById(downloadProvider, currentVersion.get().modid())
+                .filter(version -> version.gameVersions().contains(gameVersion))
+                .filter(version -> version.loaders().contains(getModLoaderType()))
+                .filter(version -> version.datePublished().compareTo(currentVersion.get().datePublished()) > 0)
+                .sorted(Comparator.comparing(RemoteAddon.Version::datePublished).reversed())
+                .toList();
+        if (remoteVersions.isEmpty()) return null;
+        return new AddonUpdate(this, currentVersion.get(), remoteVersions.get(0), true);
+    }
+
+    @Override
+    public int compareTo(LocalModFile o) {
+        return getFileName().compareToIgnoreCase(o.getFileName());
     }
 
     @Override

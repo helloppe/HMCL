@@ -1,10 +1,23 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.main;
 
 import com.google.gson.annotations.SerializedName;
-
-import javafx.scene.Node;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.Metadata;
@@ -17,12 +30,10 @@ import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.util.gson.JsonSerializable;
 import org.jackhuang.hmcl.util.io.HttpRequest;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.jackhuang.hmcl.util.gson.JsonUtils.listTypeOf;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
-import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 public class HelpPage extends SpinnerPane {
 
@@ -51,16 +62,7 @@ public class HelpPage extends SpinnerPane {
     private void loadHelp() {
         showSpinner();
         Task.supplyAsync(() -> HttpRequest.GET(Metadata.DOCS_URL + "/index.json").getJson(listTypeOf(HelpCategory.class)))
-            .whenComplete(Schedulers.javafx(), (helpCategories, exception) -> {
-                if (exception != null) {
-                    LOG.warning("Failed to load help page: ", exception);
-                    showLoadFailure();
-                    return;
-                }
-
-                try {
-                    List<Node> nodes = new ArrayList<>();
-
+                .thenAcceptAsync(Schedulers.javafx(), helpCategories -> {
                     for (HelpCategory category : helpCategories) {
                         ComponentList categoryPane = new ComponentList();
 
@@ -73,24 +75,11 @@ public class HelpPage extends SpinnerPane {
                             categoryPane.getContent().add(item);
                         }
 
-                        nodes.add(ComponentList.createComponentListTitle(category.title()));
-                        nodes.add(categoryPane);
+                        content.getChildren().add(ComponentList.createComponentListTitle(category.title()));
+                        content.getChildren().add(categoryPane);
                     }
-
-                    content.getChildren().addAll(nodes);
-
                     hideSpinner();
-                } catch (Exception e) {
-                    LOG.warning("Failed to display help page: ", e);
-                    showLoadFailure();
-                }
-            }).start();
-    }
-
-    private void showLoadFailure() {
-        setFailedReason(i18n("download.failed.refresh"));
-        setOnFailedAction(e -> loadHelp());
-        setLoading(false);
+                }).start();
     }
 
     @JsonSerializable

@@ -1,8 +1,24 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.download.liteloader;
 
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
 import org.jackhuang.hmcl.game.*;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.Lang;
@@ -17,17 +33,17 @@ import java.util.List;
  *
  * @author huangyuhui
  */
-public final class LiteLoaderInstallTask extends Task<GameInstancePatch> {
+public final class LiteLoaderInstallTask extends Task<Version> {
 
     private final DefaultDependencyManager dependencyManager;
-    private final GameInstanceManifest manifest;
+    private final Version version;
     private final LiteLoaderRemoteVersion remote;
     private final List<Task<?>> dependents = new ArrayList<>();
     private final List<Task<?>> dependencies = new ArrayList<>(1);
 
-    public LiteLoaderInstallTask(DefaultDependencyManager dependencyManager, GameInstanceManifest manifest, LiteLoaderRemoteVersion remoteVersion) {
+    public LiteLoaderInstallTask(DefaultDependencyManager dependencyManager, Version version, LiteLoaderRemoteVersion remoteVersion) {
         this.dependencyManager = dependencyManager;
-        this.manifest = manifest;
+        this.version = version;
         this.remote = remoteVersion;
     }
 
@@ -45,20 +61,20 @@ public final class LiteLoaderInstallTask extends Task<GameInstancePatch> {
     public void execute() {
         Library library = new Library(
                 new Artifact("com.mumfrey", "liteloader", remote.getSelfVersion()),
-                "https://dl.liteloader.com/versions/",
+                "http://dl.liteloader.com/versions/",
                 new LibrariesDownloadInfo(new LibraryDownloadInfo(null, remote.getUrls().get(0)))
         );
 
-        setResult(new GameInstancePatch(GameComponentType.LITELOADER.getPatchId(),
+        setResult(new Version(LibraryAnalyzer.LibraryType.LITELOADER.getPatchId(),
                 remote.getSelfVersion(),
                 60000,
                 new Arguments().addGameArguments("--tweakClass", "com.mumfrey.liteloader.launch.LiteLoaderTweaker"),
-                GameComponentAnalyzer.LAUNCH_WRAPPER_MAIN,
+                LibraryAnalyzer.LAUNCH_WRAPPER_MAIN,
                 Lang.merge(remote.getLibraries(), Collections.singleton(library)))
-                .withLogging(Collections.emptyMap()) // Mods may log in malformed format, causing XML parser to crash. So we suppress using official log4j configuration
+                .setLogging(Collections.emptyMap()) // Mods may log in malformed format, causing XML parser to crash. So we suppress using official log4j configuration
         );
 
-        dependencies.add(new org.jackhuang.hmcl.download.game.GameLibrariesTask(dependencyManager, manifest, true, getResult().getLibraries()));
+        dependencies.add(dependencyManager.checkLibraryCompletionAsync(getResult(), true));
     }
 
 }

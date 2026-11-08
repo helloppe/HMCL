@@ -1,11 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.modpack.multimc;
 
-import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.game.GameComponentType;
-import org.jetbrains.annotations.Nullable;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
+import org.jackhuang.hmcl.util.io.NetworkUtils;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -51,21 +66,21 @@ public final class MultiMCComponents {
         return builder.toString();
     }
 
-    private static final Map<String, GameComponentType> ID_TYPE = new HashMap<>();
+    private static final Map<String, LibraryAnalyzer.LibraryType> ID_TYPE = new HashMap<>();
 
     static {
-        ID_TYPE.put("net.minecraft", GameComponentType.GAME);
-        ID_TYPE.put("net.minecraftforge", GameComponentType.FORGE);
-        ID_TYPE.put("net.neoforged", GameComponentType.NEO_FORGE);
-        ID_TYPE.put("com.mumfrey.liteloader", GameComponentType.LITELOADER);
-        ID_TYPE.put("net.fabricmc.fabric-loader", GameComponentType.FABRIC);
-        ID_TYPE.put("org.quiltmc.quilt-loader", GameComponentType.QUILT);
+        ID_TYPE.put("net.minecraft", LibraryAnalyzer.LibraryType.MINECRAFT);
+        ID_TYPE.put("net.minecraftforge", LibraryAnalyzer.LibraryType.FORGE);
+        ID_TYPE.put("net.neoforged", LibraryAnalyzer.LibraryType.NEO_FORGE);
+        ID_TYPE.put("com.mumfrey.liteloader", LibraryAnalyzer.LibraryType.LITELOADER);
+        ID_TYPE.put("net.fabricmc.fabric-loader", LibraryAnalyzer.LibraryType.FABRIC);
+        ID_TYPE.put("org.quiltmc.quilt-loader", LibraryAnalyzer.LibraryType.QUILT);
     }
 
-    private static final Map<GameComponentType, String> TYPE_ID =
+    private static final Map<LibraryAnalyzer.LibraryType, String> TYPE_ID =
             ID_TYPE.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
 
-    private static final Collection<Map.Entry<String, GameComponentType>> PAIRS = Collections.unmodifiableCollection(ID_TYPE.entrySet());
+    private static final Collection<Map.Entry<String, LibraryAnalyzer.LibraryType>> PAIRS = Collections.unmodifiableCollection(ID_TYPE.entrySet());
 
     static {
         if (TYPE_ID.isEmpty()) {
@@ -73,20 +88,19 @@ public final class MultiMCComponents {
         }
     }
 
-    public static String getComponent(GameComponentType type) {
+    public static String getComponent(LibraryAnalyzer.LibraryType type) {
         return TYPE_ID.get(type);
     }
 
-    public static GameComponentType getComponent(String type) {
+    public static LibraryAnalyzer.LibraryType getComponent(String type) {
         return ID_TYPE.get(type);
     }
 
-    public static Collection<Map.Entry<String, GameComponentType>> getPairs() {
+    public static Collection<Map.Entry<String, LibraryAnalyzer.LibraryType>> getPairs() {
         return PAIRS;
     }
 
-    /// Returns the component metadata URL, selecting the known LWJGL or Minecraft version fallback when absent.
-    public static WebURL getMetaURL(String componentID, @Nullable String version, String mcVersion) {
+    public static URI getMetaURL(String componentID, String version, String mcVersion) {
         if (version == null) {
             switch (componentID) {
                 case "org.lwjgl": {
@@ -105,6 +119,6 @@ public final class MultiMCComponents {
             }
         }
 
-        return WebURL.parse(String.format("https://meta.multimc.org/v1/%s/%s.json", componentID, version));
+        return NetworkUtils.toURI(String.format("https://meta.multimc.org/v1/%s/%s.json", componentID, version));
     }
 }

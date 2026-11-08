@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.game;
 
 import com.jfoenix.controls.JFXButton;
@@ -12,7 +27,6 @@ import javafx.beans.property.Property;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.css.PseudoClass;
@@ -35,8 +49,8 @@ import org.jackhuang.hmcl.setting.property.SettingProperty;
 import org.jackhuang.hmcl.ui.*;
 import org.jackhuang.hmcl.ui.construct.*;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
-import org.jackhuang.hmcl.ui.instances.GameInstanceIconDialog;
-import org.jackhuang.hmcl.ui.instances.GameInstancePage;
+import org.jackhuang.hmcl.ui.versions.VersionIconDialog;
+import org.jackhuang.hmcl.ui.versions.VersionPage;
 import org.jackhuang.hmcl.util.Holder;
 import org.jackhuang.hmcl.util.Pair;
 import org.jackhuang.hmcl.util.ServerAddress;
@@ -62,7 +76,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// @author Glavo
 @NotNullByDefault
 public final class GameSettingsPage<S extends GameSettings> extends StackPane
-        implements DecoratorPage, PageAware {
+        implements DecoratorPage, VersionPage.GameInstanceLoadable, PageAware {
 
     private static final Object INHERIT_BUTTON_TOOLTIP_KEY = new Object();
     private static final PseudoClass PSEUDO_OVERRIDDEN = PseudoClass.getPseudoClass("overridden");
@@ -74,12 +88,19 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     private final ObjectProperty<State> state = new SimpleObjectProperty<>(this, "state", new State("", null, false, false, false));
     private final WeakListenerHolder holder = new WeakListenerHolder();
 
-    /// The current game instance when editing instance settings, or `null` for preset settings.
-    private final ObjectProperty<@Nullable HMCLGameInstance> gameInstance =
-            new SimpleObjectProperty<>(this, "gameInstance");
+    /// The selected game directory.
+    private @Nullable GameDirectory gameDirectory;
+
+    /// The selected repository.
+    private @Nullable HMCLGameRepository repository;
+
+    /// The current instance ID.
+    private @Nullable String instanceId;
 
     /// The current setting.
     private final ObjectProperty<@Nullable S> currentSetting = new SimpleObjectProperty<>(this, "setting");
+
+    private final ObjectProperty<GameVersionNumber> currentGameVersionNumber = new SimpleObjectProperty<>(this, "currentGameVersionNumber", GameVersionNumber.unknown());
 
     private boolean updatingJavaSetting = false;
     private boolean updatingSelectedJava = false;
@@ -108,24 +129,12 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     private final InvalidationListener javaListener = o -> refreshJavaSettings();
     private final InvalidationListener weakJavaListener = holder.weak(javaListener);
 
-    /// Creates a settings page.
-    ///
-    /// @param settingType     [GameSettings.Instance] or [GameSettings.Preset]
-    /// @param instanceContext parent instance property for instance settings; ignored for presets and may be `null`
-    public GameSettingsPage(
-            Class<S> settingType,
-            @Nullable ObservableValue<? extends HMCLGameInstance.Optional> instanceContext) {
+    public GameSettingsPage(Class<S> settingType) {
         assert settingType == GameSettings.Preset.class || settingType == GameSettings.Instance.class;
 
         this.isPresetSetting = settingType == GameSettings.Preset.class;
         if (!isPresetSetting) {
             bindActiveParentSetting();
-            Objects.requireNonNull(instanceContext, "instanceContext");
-            holder.add(FXUtils.onWeakChangeAndOperate(instanceContext, current -> {
-                if (current != null) {
-                    loadInstance(current);
-                }
-            }));
         }
 
         this.scrollPane = new ScrollPane();
@@ -348,7 +357,7 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
                 });
                 bindPresetBidirectional(defaultIsolationTypePane.valueProperty(), GameSettings.Preset::defaultIsolationTypeProperty);
             } else {
-                var isolationButton = new LineSwitch();
+                var isolationButton = new LineToggleButton();
                 basicSettings.getContent().add(isolationButton);
                 isolationButton.setTitle(i18n("settings.game.isolation"));
                 isolationButton.setSubtitle(i18n("settings.game.isolation.subtitle"));
@@ -628,11 +637,6 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
                 jvmSettings
         );
         {
-            var notUseJavawPane = createInheritableBooleanButton(GameSettings::notUseJavawProperty);
-            jvmSettings.getContent().add(notUseJavawPane);
-            notUseJavawPane.setTitle(i18n("settings.advanced.not_use_javaw"));
-            notUseJavawPane.setSubtitle(i18n("settings.advanced.windows_only"));
-
             var noJVMArgsPane = createInheritableBooleanButton(GameSettings::noJVMOptionsProperty);
             jvmSettings.getContent().add(noJVMArgsPane);
             noJVMArgsPane.setTitle(i18n("settings.advanced.no_jvm_args"));
@@ -783,26 +787,19 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
             graphicsSettings.getContent().add(vulkanRendererPane);
             vulkanRendererPane.setTitle(i18n("settings.advanced.renderer.vulkan"));
 
-            var highPerformancePane = createInheritableBooleanButton(GameSettings::highPerformanceProperty);
-            graphicsSettings.getContent().add(highPerformancePane);
-            highPerformancePane.setTitle(i18n("settings.advanced.renderer.gpu_preferences"));
-
-            InvalidationListener updateGraphicsVisibility = o -> {
-                GameVersionNumber version = currentGameVersion();
-                boolean showBackendChoose = isPresetSetting || version.compareTo("26.2-snapshot-2") >= 0;
+            this.currentGameVersionNumber.addListener((o, oldValue, newValue) -> {
+                boolean showBackendChoose = isPresetSetting || newValue.compareTo("26.2-snapshot-2") >= 0;
                 graphicsBackendPane.setVisible(showBackendChoose);
                 graphicsBackendPane.setManaged(showBackendChoose);
 
-                boolean showOpenGL = GraphicsAPI.OPENGL.isSupported(version);
+                boolean showOpenGL = GraphicsAPI.OPENGL.isSupported(newValue);
                 openGLRendererPane.setVisible(showOpenGL);
                 openGLRendererPane.setManaged(showOpenGL);
 
-                boolean showVulkan = isPresetSetting || GraphicsAPI.VULKAN.isSupported(version);
+                boolean showVulkan = GraphicsAPI.VULKAN.isSupported(newValue);
                 vulkanRendererPane.setVisible(showVulkan);
                 vulkanRendererPane.setManaged(showVulkan);
-            };
-            this.gameInstance.addListener(updateGraphicsVisibility);
-            updateGraphicsVisibility.invalidated(this.gameInstance);
+            });
         }
 
         var nativeLibrarySettings = new ComponentList();
@@ -819,24 +816,20 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
             nativeLibrarySettings.getContent().add(nativesDirPane);
             nativesDirPane.setTitle(i18n("settings.advanced.natives_directory"));
             {
-                var nativesDirSelector = new FileSelector()
-                        .setSelectionMode(FileSelector.SelectionMode.DIRECTORY);
-                nativesDirSelector.setPrefWidth(400);
-                nativesDirPane.setRight(nativesDirSelector);
-                bindInheritableStringProperty(
-                        nativesDirPane,
-                        nativesDirSelector.valueProperty(),
-                        GameSettings::nativesDirectoryProperty);
+                var txtNativesDir = new JFXTextField();
+                txtNativesDir.setPrefWidth(400);
+                nativesDirPane.setRight(txtNativesDir);
+                bindIndependentTextField(nativesDirPane, txtNativesDir, GameSettings::nativesDirectoryProperty);
             }
 
             var noNativesPatchPane = createIndependentBooleanButton(GameSettings::notPatchNativesProperty);
             nativeLibrarySettings.getContent().add(noNativesPatchPane);
             noNativesPatchPane.setTitle(i18n("settings.advanced.dont_patch_natives"));
 
-            var useNativeGLFWORsdlPane = createIndependentBooleanButton(GameSettings::useNativeGLFWorSDLProperty);
-            nativeLibrarySettings.getContent().add(useNativeGLFWORsdlPane);
-            useNativeGLFWORsdlPane.setTitle(i18n("settings.advanced.use_native_glfw_or_sdl"));
-            useNativeGLFWORsdlPane.setSubtitle(i18n("settings.advanced.linux_freebsd_only"));
+            var useNativeGLFWPane = createIndependentBooleanButton(GameSettings::useNativeGLFWProperty);
+            nativeLibrarySettings.getContent().add(useNativeGLFWPane);
+            useNativeGLFWPane.setTitle(i18n("settings.advanced.use_native_glfw"));
+            useNativeGLFWPane.setSubtitle(i18n("settings.advanced.linux_freebsd_only"));
 
             var useNativeOpenALPane = createIndependentBooleanButton(GameSettings::useNativeOpenALProperty);
             nativeLibrarySettings.getContent().add(useNativeOpenALPane);
@@ -1687,8 +1680,8 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
         }
     }
 
-    /// Binds the instance isolation switch to the current instance setting.
-    private void bindInstanceIsolationButton(LineSwitch button) {
+    /// Binds the instance isolation toggle to the current instance setting.
+    private void bindInstanceIsolationButton(LineToggleButton button) {
         final Holder<Boolean> updating = new Holder<>(false);
 
         InvalidationListener refresh = observable -> {
@@ -1728,7 +1721,7 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
             }
             refresh.invalidated(instance);
 
-            fireEvent(new GameInstancePage.WorkingDirChangedEvent());
+            fireEvent(new VersionPage.WorkingDirChangedEvent());
         });
 
         currentSetting.addListener((observable, oldValue, newValue) -> {
@@ -1818,7 +1811,7 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
             }
             refresh.invalidated(instance);
 
-            fireEvent(new GameInstancePage.WorkingDirChangedEvent());
+            fireEvent(new VersionPage.WorkingDirChangedEvent());
 
             event.consume();
         });
@@ -1840,7 +1833,7 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
                 updating.value = false;
             }
 
-            fireEvent(new GameInstancePage.WorkingDirChangedEvent());
+            fireEvent(new VersionPage.WorkingDirChangedEvent());
         });
 
         currentSetting.addListener((observable, oldValue, newValue) -> {
@@ -1862,20 +1855,16 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     }
 
     private boolean isCurrentInstanceModpack() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        return gameInstance != null && gameInstance.isModpack();
+        return repository != null && instanceId != null && repository.isModpack(instanceId);
     }
 
     /// Returns the current instance version root displayed for modpack running directories.
     private String getCurrentInstanceVersionRoot() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        return gameInstance != null ? gameInstance.getInstanceRoot().toString() : "";
-    }
+        if (repository == null || instanceId == null) {
+            return "";
+        }
 
-    /// Returns the Minecraft version of the loaded instance, or [GameVersionNumber#unknown()] for presets.
-    private GameVersionNumber currentGameVersion() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        return gameInstance != null ? gameInstance.getVersion() : GameVersionNumber.unknown();
+        return repository.getVersionRoot(instanceId).toString();
     }
 
     /// Keeps a listener attached to the current instance's parent preset property.
@@ -2315,15 +2304,15 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
         bindSettingBidirectional(property, (Function<S, Property<T>>) propertyGetter);
     }
 
-    /// Creates a switch editor for a setting property with independent override state.
-    private LineInheritableSwitch createIndependentBooleanButton(
+    /// Creates a toggle-based editor for a setting property with independent override state.
+    private LineInheritableToggleButton createIndependentBooleanButton(
             Function<GameSettings, SettingProperty<Boolean>> propertyGetter) {
-        var button = new LineInheritableSwitch();
+        var button = new LineInheritableToggleButton();
         button.setInheritTooltip(i18n("settings.game.inherit_global"));
         button.setOverriddenTooltip(i18n("settings.game.override_global"));
         button.setInheritAvailable(!isPresetSetting);
 
-        IndependentSettingBinder.bindSwitch(
+        IndependentSettingBinder.bindToggleButton(
                 currentSetting,
                 button,
                 propertyGetter,
@@ -2333,15 +2322,15 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
         return button;
     }
 
-    /// Creates an inheritable boolean switch editor that displays the effective value.
-    private LineInheritableSwitch createInheritableBooleanButton(
+    /// Creates a toggle-based inheritable boolean editor that displays the effective value.
+    private LineInheritableToggleButton createInheritableBooleanButton(
             Function<GameSettings, InheritableProperty<Boolean>> propertyGetter) {
-        var button = new LineInheritableSwitch();
+        var button = new LineInheritableToggleButton();
         button.setInheritTooltip(i18n("settings.game.inherit_global"));
         button.setOverriddenTooltip(i18n("settings.game.override_global"));
         button.setInheritAvailable(!isPresetSetting);
 
-        bindEffectiveInheritableSwitch(button, propertyGetter);
+        bindEffectiveInheritableToggleButton(button, propertyGetter);
         return button;
     }
 
@@ -2455,9 +2444,9 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
         }
     }
 
-    /// Binds an inheritable switch editor to an inheritable boolean setting.
-    private void bindEffectiveInheritableSwitch(
-            LineInheritableSwitch button,
+    /// Binds an inheritable toggle editor to an inheritable boolean setting.
+    private void bindEffectiveInheritableToggleButton(
+            LineInheritableToggleButton button,
             Function<GameSettings, InheritableProperty<Boolean>> propertyGetter) {
         ObjectProperty<@Nullable InheritableProperty<Boolean>> activeProperty = new SimpleObjectProperty<>();
         ObjectProperty<@Nullable InheritableProperty<Boolean>> activeParentProperty = new SimpleObjectProperty<>();
@@ -2595,9 +2584,8 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
 
     /// Returns the runtime parent preset for an instance, including the game directory's migrated preset fallback.
     private GameSettings.Preset getEffectiveParentGameSettings(GameSettings.Instance instance) {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        if (gameInstance != null) {
-            return gameInstance.getRepository().getParentGameSettings(instance);
+        if (repository != null) {
+            return repository.getParentGameSettings(instance);
         }
 
         return getExplicitParentGameSettings(instance);
@@ -2636,21 +2624,26 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     }
 
     @SuppressWarnings("unchecked")
-    public void loadInstance(HMCLGameInstance.Optional instance) {
-        HMCLGameInstance gameInstance = instance.instance();
-        this.gameInstance.set(gameInstance);
+    @Override
+    public void loadInstance(HMCLGameRepository repository, @Nullable String instanceId) {
+        this.gameDirectory = repository.getGameDirectory();
+        this.repository = repository;
+        this.instanceId = instanceId;
 
-        assert isPresetSetting == (gameInstance == null);
+        assert isPresetSetting == (instanceId == null);
 
-        if (gameInstance != null) {
-            @Nullable GameSettings.Instance setting = gameInstance.getSettingsOrCreate();
+        if (instanceId != null) {
+            this.currentGameVersionNumber.set(GameVersionNumber.asGameVersion(repository.getGameVersion(instanceId)));
+
+            @Nullable GameSettings.Instance setting = repository.getInstanceGameSettingsOrCreate(instanceId);
             this.currentSetting.set((S) setting);
             setSettingsReadOnly(
-                    setting == null || gameInstance.isSettingsReadOnly(),
+                    setting == null || repository.isInstanceGameSettingsReadOnly(instanceId),
                     i18n("settings.game.instance_settings.unsupported"),
                     setting != null ? this::forceOverwriteInstanceGameSettings : null);
             loadIcon();
         } else {
+            this.currentGameVersionNumber.set(GameVersionNumber.unknown());
             this.currentSetting.set((S) SettingsManager.getDefaultGameSettingsPresetOrCreate());
             setSettingsReadOnly(
                     SettingsManager.isGameSettingsReadOnly(),
@@ -2698,13 +2691,12 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
 
     /// Backs up and overwrites the current instance's `instance-game-settings.json`.
     private void forceOverwriteInstanceGameSettings() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        if (gameInstance == null) {
+        if (repository == null || instanceId == null) {
             return;
         }
 
         Controllers.confirmBackupAndOverwrite(i18n("settings.game.instance_settings.unsupported"), () -> {
-            gameInstance.forceOverwriteSettings();
+            repository.forceOverwriteInstanceGameSettings(instanceId);
             setSettingsReadOnly(false, "");
         });
     }
@@ -2718,12 +2710,10 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     }
 
     private void loadIcon() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        if (gameInstance == null) {
+        if (repository == null || instanceId == null)
             return;
-        }
 
-        iconPickerItem.setImage(gameInstance.getIconImage());
+        iconPickerItem.setImage(repository.getVersionIconImage(instanceId));
     }
 
     /// Refreshes Java selection controls and keeps inherited parent Java properties observed.
@@ -2787,19 +2777,16 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     private void initJavaSubtitle() {
         S setting = currentSetting.get();
 
-        if (setting == null) {
+        if (setting == null || gameDirectory == null)
             return;
-        }
         initializeSelectedJava();
 
         JavaVersionType javaVersionType = setting.javaTypeProperty().getValue();
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        @Nullable GameSettings.Effective effectiveSetting =
-                gameInstance != null ? gameInstance.getEffectiveSettings() : null;
+        GameSettings.Effective effectiveSetting = this.instanceId != null && repository != null ? repository.getEffectiveGameSettings(this.instanceId) : null;
         JavaVersionType effectiveJavaVersionType = effectiveSetting != null ? effectiveSetting.getInheritable(GameSettings::javaTypeProperty) : javaVersionType;
         boolean autoSelected = effectiveJavaVersionType == JavaVersionType.AUTO || effectiveJavaVersionType == JavaVersionType.VERSION;
 
-        if (gameInstance == null && autoSelected) {
+        if (instanceId == null && autoSelected) {
             javaSublist.setDescription(i18n("settings.game.java_directory.auto"));
             return;
         }
@@ -2811,13 +2798,18 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
         }
 
         if (JavaManager.isInitialized()) {
-            GameVersionNumber gameVersionNumber = currentGameVersion();
-            GameInstanceManifest manifest = gameInstance != null ? gameInstance.getResolvedManifest() : null;
+            GameVersionNumber gameVersionNumber = this.currentGameVersionNumber.get();
+            Version version;
+            if (this.instanceId == null) {
+                version = null;
+            } else {
+                version = repository != null ? repository.getResolvedVersion(this.instanceId) : null;
+            }
 
             try {
                 JavaRuntime java = effectiveSetting != null
-                        ? effectiveSetting.getJava(gameVersionNumber, manifest)
-                        : resolveEffectiveSetting(setting).getJava(gameVersionNumber, manifest);
+                        ? effectiveSetting.getJava(gameVersionNumber, version)
+                        : resolveEffectiveSetting(setting).getJava(gameVersionNumber, version);
                 if (java != null) {
                     javaSublist.setDescription(java.getBinary().toString());
                 } else {
@@ -2832,23 +2824,20 @@ public final class GameSettingsPage<S extends GameSettings> extends StackPane
     }
 
     private void onExploreIcon() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        if (gameInstance == null) {
+        if (repository == null || instanceId == null)
             return;
-        }
-        Controllers.dialog(new GameInstanceIconDialog(gameInstance, this::loadIcon));
+
+        Controllers.dialog(new VersionIconDialog(repository, instanceId, this::loadIcon));
     }
 
     private void onDeleteIcon() {
-        HMCLGameInstance gameInstance = this.gameInstance.get();
-        if (gameInstance == null) {
+        if (repository == null || instanceId == null)
             return;
-        }
 
-        gameInstance.deleteIconFile();
-        GameSettings.Instance localGameSettings = gameInstance.getSettingsOrCreate();
+        repository.deleteIconFile(instanceId);
+        GameSettings.Instance localGameSettings = repository.getInstanceGameSettingsOrCreate(instanceId);
         if (localGameSettings != null) {
-            localGameSettings.iconProperty().setValue(GameInstanceIconType.DEFAULT);
+            localGameSettings.iconProperty().setValue(VersionIconType.DEFAULT);
         }
         loadIcon();
     }

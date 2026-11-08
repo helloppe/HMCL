@@ -1,37 +1,45 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.download.fabric;
 
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.download.ComponentRemoteVersion;
-import org.jackhuang.hmcl.game.GameComponentType;
-import org.jackhuang.hmcl.game.GameInstanceManifest;
-import org.jackhuang.hmcl.game.GameInstancePatch;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
+import org.jackhuang.hmcl.download.RemoteVersion;
+import org.jackhuang.hmcl.game.Version;
 import org.jackhuang.hmcl.addon.RemoteAddon;
 import org.jackhuang.hmcl.task.Task;
-import org.jackhuang.hmcl.util.versioning.GameVersionNumber;
-import org.jetbrains.annotations.NotNullByDefault;
 
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 
-@NotNullByDefault
-public final class FabricAPIRemoteVersion extends ComponentRemoteVersion {
-
-    /// @see <a href="https://modrinth.com/mod/fabric-api">Fabric API - Modrinth</a>
-    public static final String MODRINTH_ID = "fabric-api";
-
+public class FabricAPIRemoteVersion extends RemoteVersion {
     private final String fullVersion;
     private final RemoteAddon.Version version;
 
-    /// Constructor.
-    ///
-    /// @param gameVersion the Minecraft version that this remote version suits.
-    /// @param selfVersion the version string of the remote version.
-    /// @param urls        the installer or universal jar original URL.
-    public FabricAPIRemoteVersion(GameVersionNumber gameVersion, String selfVersion, String fullVersion, Instant datePublished, RemoteAddon.Version version, List<String> urls) {
-        super(GameComponentType.FABRIC_API, gameVersion, selfVersion, datePublished, Type.UNCATEGORIZED, urls);
+    /**
+     * Constructor.
+     *
+     * @param gameVersion the Minecraft version that this remote version suits.
+     * @param selfVersion the version string of the remote version.
+     * @param urls        the installer or universal jar original URL.
+     */
+    FabricAPIRemoteVersion(String gameVersion, String selfVersion, String fullVersion, Instant datePublished, RemoteAddon.Version version, List<String> urls) {
+        super(LibraryAnalyzer.LibraryType.FABRIC_API.getPatchId(), gameVersion, selfVersion, datePublished, urls);
 
         this.fullVersion = fullVersion;
         this.version = version;
@@ -47,15 +55,12 @@ public final class FabricAPIRemoteVersion extends ComponentRemoteVersion {
     }
 
     @Override
-    public Task<GameInstancePatch> getInstallTask(
-            DefaultDependencyManager dependencyManager,
-            GameInstanceManifest baseManifest,
-            Path modsDirectory) {
-        return new FabricAPIInstallTask(dependencyManager, baseManifest, this, modsDirectory);
+    public Task<Version> getInstallTask(DefaultDependencyManager dependencyManager, Version baseVersion) {
+        return new FabricAPIInstallTask(dependencyManager, baseVersion, this);
     }
 
     @Override
-    public int compareTo(ComponentRemoteVersion o) {
+    public int compareTo(RemoteVersion o) {
         if (!(o instanceof FabricAPIRemoteVersion)) return 0;
         return -this.getReleaseDate().compareTo(o.getReleaseDate());
     }

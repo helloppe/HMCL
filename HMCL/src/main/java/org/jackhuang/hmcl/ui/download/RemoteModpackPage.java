@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.download;
 
 import javafx.application.Platform;
@@ -30,7 +45,7 @@ public final class RemoteModpackPage extends ModpackPage {
             throw new IllegalStateException("MODPACK_SERVER_MANIFEST should exist");
 
         try {
-            controller.getSettings().put(MODPACK_MANIFEST, manifest.toModpack());
+            controller.getSettings().put(MODPACK_MANIFEST, manifest.toModpack(null));
         } catch (IOException e) {
             Controllers.dialog(i18n("modpack.type.server.malformed"), i18n("message.error"), MessageDialogPane.MessageType.ERROR);
             Platform.runLater(controller::onEnd);
@@ -47,11 +62,12 @@ public final class RemoteModpackPage extends ModpackPage {
             txtModpackName.setText(name);
             txtModpackName.setDisable(true);
         } else {
-            txtModpackName.setText(LocalModpackPage.processModpackName(manifest.getName()));
+            // trim: https://github.com/HMCL-dev/HMCL/issues/962
+            txtModpackName.setText(manifest.getName().trim());
             txtModpackName.getValidators().addAll(
                     new RequiredValidator(),
-                    new Validator(i18n("install.new_game.already_exists"), str -> !repository.instanceIdConflicts(str)),
-                    new Validator(i18n("install.new_game.malformed"), HMCLGameRepository::isValidInstanceId));
+                    new Validator(i18n("install.new_game.already_exists"), str -> !repository.versionIdConflicts(str)),
+                    new Validator(i18n("install.new_game.malformed"), HMCLGameRepository::isValidVersionId));
         }
 
         btnDescription.setVisible(StringUtils.isNotBlank(manifest.getDescription()));

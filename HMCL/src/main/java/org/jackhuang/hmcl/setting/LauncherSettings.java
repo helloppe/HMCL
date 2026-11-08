@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.setting;
 
 import com.google.gson.*;
@@ -19,7 +34,6 @@ import org.hildan.fxgson.creators.ObservableSetCreator;
 import org.hildan.fxgson.factories.JavaFxPropertyTypeAdapterFactory;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.auth.AccountID;
-import org.jackhuang.hmcl.game.GameInstanceID;
 import org.jackhuang.hmcl.java.JavaRuntime;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
 import org.jackhuang.hmcl.theme.BuiltinBackground;
@@ -175,6 +189,16 @@ public final class LauncherSettings extends ObservableSetting implements JsonSch
     /// Returns the launcher UI language property.
     public ObjectProperty<SupportedLocale> languageProperty() {
         return language;
+    }
+
+    /// What the launcher window does after the game has been launched.
+    @SerializedName("launcherVisibility")
+    private final ObjectProperty<LauncherVisibility> launcherVisibility =
+            new SimpleObjectProperty<>(this, "launcherVisibility", LauncherVisibility.HIDE);
+
+    /// Returns the launcher visibility property.
+    public ObjectProperty<LauncherVisibility> launcherVisibilityProperty() {
+        return launcherVisibility;
     }
 
     /// Whether preview builds are accepted by update checks.
@@ -466,17 +490,15 @@ public final class LauncherSettings extends ObservableSetting implements JsonSch
 
     /// Whether UI animations are disabled.
     @SerializedName("animationDisabled")
-    private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
+    private final BooleanProperty animationDisabled = new SimpleBooleanProperty(
+            FXUtils.REDUCED_MOTION == Boolean.TRUE
+                    || !JavaRuntime.CURRENT_JIT_ENABLED
+                    || !FXUtils.GPU_ACCELERATION_ENABLED
+    );
 
     /// Returns the UI animation disable property.
-    public ObjectProperty<@Nullable Boolean> animationDisabledProperty() {
+    public BooleanProperty animationDisabledProperty() {
         return animationDisabled;
-    }
-
-    public boolean isAnimationDisabled() {
-        // Avoid accessing FXUtils too early during startup
-        return Objects.requireNonNullElseGet(animationDisabled.get(), () ->
-                FXUtils.REDUCED_MOTION == Boolean.TRUE || !JavaRuntime.CURRENT_JIT_ENABLED || !FXUtils.GPU_ACCELERATION_ENABLED);
     }
 
     // Networks
@@ -609,34 +631,34 @@ public final class LauncherSettings extends ObservableSetting implements JsonSch
     ///
     /// This field is owned by [GameDirectoryManager]. Code outside [GameDirectoryManager] should not modify it directly.
     @SerializedName(PROPERTY_SELECTED_INSTANCE)
-    private final ObservableMap<GameDirectoryID, GameInstanceID> selectedInstance = FXCollections.observableHashMap();
+    private final ObservableMap<GameDirectoryID, String> selectedInstance = FXCollections.observableHashMap();
 
     /// Returns selected instance IDs keyed by game directory ID.
     ///
     /// The map stores persisted selected instance values by game directory ID.
-    public ObservableMap<GameDirectoryID, GameInstanceID> getSelectedInstance() {
+    public ObservableMap<GameDirectoryID, String> getSelectedInstance() {
         return selectedInstance;
     }
 
     /// Returns the selected instance ID for the given game directory ID.
     ///
     /// The value is loaded by the game repository for the matching game directory.
-    public @Nullable GameInstanceID getSelectedInstance(@Nullable GameDirectoryID gameDirectoryId) {
+    public @Nullable String getSelectedInstance(@Nullable GameDirectoryID gameDirectoryId) {
         return gameDirectoryId != null ? selectedInstance.get(gameDirectoryId) : null;
     }
 
     /// Sets the selected instance ID for the given game directory ID.
     ///
     /// Blank values remove the persisted selected instance entry.
-    public void setSelectedInstance(@Nullable GameDirectoryID gameDirectoryId, @Nullable GameInstanceID selectedInstance) {
+    public void setSelectedInstance(@Nullable GameDirectoryID gameDirectoryId, @Nullable String selectedInstance) {
         if (gameDirectoryId == null) {
             return;
         }
 
-        if (selectedInstance != null) {
-            this.selectedInstance.put(gameDirectoryId, selectedInstance);
-        } else {
+        if (StringUtils.isBlank(selectedInstance)) {
             this.selectedInstance.remove(gameDirectoryId);
+        } else {
+            this.selectedInstance.put(gameDirectoryId, selectedInstance);
         }
     }
 

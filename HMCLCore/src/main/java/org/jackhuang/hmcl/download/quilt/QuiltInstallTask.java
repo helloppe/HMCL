@@ -1,13 +1,31 @@
-// SPDX-FileCopyrightText: Copyright (C) 2022 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2022  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.download.quilt;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.jackhuang.hmcl.download.DefaultDependencyManager;
-import org.jackhuang.hmcl.download.DownloadProvider;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
 import org.jackhuang.hmcl.download.UnsupportedInstallationException;
-import org.jackhuang.hmcl.game.*;
+import org.jackhuang.hmcl.game.Arguments;
+import org.jackhuang.hmcl.game.Artifact;
+import org.jackhuang.hmcl.game.Library;
+import org.jackhuang.hmcl.game.Version;
 import org.jackhuang.hmcl.task.GetTask;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.util.gson.JsonSerializable;
@@ -23,21 +41,20 @@ import static org.jackhuang.hmcl.download.UnsupportedInstallationException.FABRI
  *
  * @author huangyuhui
  */
-public final class QuiltInstallTask extends Task<GameInstancePatch> {
+public final class QuiltInstallTask extends Task<Version> {
 
     private final DefaultDependencyManager dependencyManager;
-    private final GameInstanceManifest manifest;
+    private final Version version;
     private final QuiltRemoteVersion remote;
     private final GetTask launchMetaTask;
     private final List<Task<?>> dependencies = new ArrayList<>(1);
 
-    public QuiltInstallTask(DefaultDependencyManager dependencyManager, GameInstanceManifest manifest, QuiltRemoteVersion remoteVersion) {
+    public QuiltInstallTask(DefaultDependencyManager dependencyManager, Version version, QuiltRemoteVersion remoteVersion) {
         this.dependencyManager = dependencyManager;
-        this.manifest = manifest;
+        this.version = version;
         this.remote = remoteVersion;
 
-        DownloadProvider downloadProvider = dependencyManager.getDownloadProvider();
-        launchMetaTask = new GetTask(downloadProvider.getDownloadCandidates(remoteVersion));
+        launchMetaTask = new GetTask(dependencyManager.getDownloadProvider().injectURLsWithCandidates(remoteVersion.getUrls()));
         launchMetaTask.setCacheRepository(dependencyManager.getCacheRepository());
     }
 
@@ -48,7 +65,7 @@ public final class QuiltInstallTask extends Task<GameInstancePatch> {
 
     @Override
     public void preExecute() throws Exception {
-        if (!Objects.equals(GameComponentAnalyzer.VANILLA_MAIN, manifest.mainClass()))
+        if (!Objects.equals("net.minecraft.client.main.Main", version.resolve(dependencyManager.getGameRepository()).getMainClass()))
             throw new UnsupportedInstallationException(FABRIC_NOT_COMPATIBLE_WITH_FORGE);
     }
 
@@ -71,11 +88,15 @@ public final class QuiltInstallTask extends Task<GameInstancePatch> {
     public void execute() {
         setResult(getPatch(JsonUtils.GSON.fromJson(launchMetaTask.getResult(), QuiltInfo.class), remote.getSelfVersion()));
 
-        dependencies.add(new org.jackhuang.hmcl.download.game.GameLibrariesTask(dependencyManager, manifest, true, getResult().getLibraries()));
+        dependencies.add(dependencyManager.checkLibraryCompletionAsync(getResult(), true));
     }
 
-    /// Creates the Quilt patch represented by the installer metadata.
-    private static GameInstancePatch getPatch(QuiltInfo quiltInfo, String loaderVersion) {
+    /// Creates the Quilt version patch described by the metadata response.
+    ///
+    /// @param quiltInfo the metadata returned by Quilt Meta
+    /// @param loaderVersion the Quilt Loader version
+    /// @return the version patch to install
+    static Version getPatch(QuiltInfo quiltInfo, String loaderVersion) {
         JsonObject launcherMeta = quiltInfo.launcherMeta;
         Arguments arguments = new Arguments();
 
@@ -108,7 +129,7 @@ public final class QuiltInstallTask extends Task<GameInstancePatch> {
         }
         libraries.add(new Library(Artifact.fromDescriptor(quiltInfo.loader.maven), getMavenRepositoryByGroup(quiltInfo.loader.maven), null));
 
-        return new GameInstancePatch(GameComponentType.QUILT.getPatchId(), loaderVersion, GameInstancePatch.PRIORITY_LOADER, arguments, mainClass, libraries);
+        return new Version(LibraryAnalyzer.LibraryType.QUILT.getPatchId(), loaderVersion, Version.PRIORITY_LOADER, arguments, mainClass, libraries);
     }
 
     private static String getMavenRepositoryByGroup(String maven) {

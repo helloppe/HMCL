@@ -1,15 +1,28 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.addon.mod;
 
 import com.google.gson.JsonParseException;
 import org.jackhuang.hmcl.addon.LocalAddonFile;
 import org.jackhuang.hmcl.addon.LocalAddonManager;
 import org.jackhuang.hmcl.addon.meta.*;
-import org.jackhuang.hmcl.game.DefaultGameInstance;
-import org.jackhuang.hmcl.game.GameComponentAnalyzer;
-import org.jackhuang.hmcl.game.GameComponentType;
-import org.jackhuang.hmcl.game.NoSuchGameInstanceException;
+import org.jackhuang.hmcl.download.LibraryAnalyzer;
+import org.jackhuang.hmcl.game.GameRepository;
 import org.jackhuang.hmcl.util.Pair;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
@@ -51,32 +64,22 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
         READERS = map;
     }
 
-    private String gameVersion;
     private final HashMap<Pair<String, ModLoaderType>, LocalMod> localMods = new HashMap<>();
-    private final EnumSet<ModLoaderType> supportedLoaders = EnumSet.noneOf(ModLoaderType.class);
-    private GameComponentAnalyzer analyzer;
+    private LibraryAnalyzer analyzer;
 
     private boolean loaded = false;
 
-    /// Creates a mod manager for the given instance.
-    ///
-    /// @param instance the snapshot member whose mods directory this manager operates on
-    public ModManager(DefaultGameInstance instance) {
-        super(instance);
+    public ModManager(GameRepository repository, String id) {
+        super(repository, id);
     }
 
     @Override
     public Path getDirectory() {
-        return instance.getModsDirectory();
+        return repository.getModsDirectory(id);
     }
 
-    public GameComponentAnalyzer getComponentAnalyzer() {
-        lock.lock();
-        try {
-            return analyzer;
-        } finally {
-            lock.unlock();
-        }
+    public LibraryAnalyzer getLibraryAnalyzer() {
+        return analyzer;
     }
 
     public LocalMod getLocalMod(String modId, ModLoaderType modLoaderType) {
@@ -98,24 +101,6 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
         }
     }
 
-    public String getGameVersion() {
-        lock.lock();
-        try {
-            return gameVersion;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public EnumSet<ModLoaderType> getSupportedLoaders() {
-        lock.lock();
-        try {
-            return EnumSet.copyOf(supportedLoaders);
-        } finally {
-            lock.unlock();
-        }
-    }
-
     private void addModInfo(Path file) {
         String fileName = StringUtils.removeSuffix(FileUtils.getName(file), DISABLED_EXTENSION, OLD_EXTENSION);
         String extension = fileName.substring(fileName.lastIndexOf(".") + 1);
@@ -126,7 +111,7 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
             return;
         }
 
-        Set<ModLoaderType> modLoaderTypes = instance.getModLoaders();
+        Set<ModLoaderType> modLoaderTypes = analyzer.getModLoaders();
 
         var supportedReaders = new ArrayList<ModMetadataReader>();
         var unsupportedReaders = new ArrayList<ModMetadataReader>();
@@ -187,18 +172,6 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
         }
     }
 
-    public void analyze() throws IOException {
-        lock.lock();
-        try {
-            gameVersion = instance.getVersion().toString();
-            analyzer = instance.getAnalyzer();
-        } catch (NoSuchGameInstanceException e) {
-            throw new IOException(e);
-        } finally {
-            lock.unlock();
-        }
-    }
-
     @Override
     public void refresh() throws IOException {
         lock.lock();
@@ -206,12 +179,10 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
             localFiles.clear();
             localMods.clear();
 
-            analyze();
+            analyzer = LibraryAnalyzer.analyze(getRepository().getResolvedPreservingPatchesVersion(id), null);
 
-            boolean supportSubfolders = analyzer.has(GameComponentType.FORGE)
-                    || analyzer.has(GameComponentType.QUILT)
-                    || analyzer.has(GameComponentType.CLEANROOM)
-                    || analyzer.has(GameComponentType.LITELOADER);
+            boolean supportSubfolders = analyzer.has(LibraryAnalyzer.LibraryType.FORGE)
+                    || analyzer.has(LibraryAnalyzer.LibraryType.QUILT);
 
             if (Files.isDirectory(getDirectory())) {
                 try (DirectoryStream<Path> modsDirectoryStream = Files.newDirectoryStream(getDirectory())) {
@@ -228,9 +199,6 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
                     }
                 }
             }
-
-            updateSupportedLoaders();
-
             loaded = true;
         } finally {
             lock.unlock();
@@ -274,47 +242,9 @@ public final class ModManager extends LocalAddonManager<LocalModFile> {
         }
     }
 
-    private void updateSupportedLoaders() {
-        supportedLoaders.clear();
-
-        if (this.analyzer == null) {
-            Collections.addAll(supportedLoaders, ModLoaderType.values());
-            return;
-        }
-
-        for (GameComponentType type : GameComponentType.values()) {
-            if (type.isModLoader() && this.analyzer.has(type)) {
-                ModLoaderType modLoaderType = type.getModLoaderType();
-                if (modLoaderType != null) {
-                    supportedLoaders.add(modLoaderType);
-
-                    if (modLoaderType == ModLoaderType.CLEANROOM)
-                        supportedLoaders.add(ModLoaderType.FORGE);
-                }
-            }
-        }
-
-        if (this.analyzer.has(GameComponentType.NEO_FORGE) && "1.20.1".equals(gameVersion)) {
-            supportedLoaders.add(ModLoaderType.FORGE);
-        }
-
-        if (this.analyzer.has(GameComponentType.QUILT)) {
-            supportedLoaders.add(ModLoaderType.FABRIC);
-        }
-
-        if (this.analyzer.has(GameComponentType.LEGACY_FABRIC)) {
-            supportedLoaders.add(ModLoaderType.FABRIC);
-        }
-
-        if (this.analyzer.has(GameComponentType.FABRIC) && hasMod("kilt", ModLoaderType.FABRIC)) {
-            supportedLoaders.add(ModLoaderType.FORGE);
-            supportedLoaders.add(ModLoaderType.NEO_FORGE);
-        }
-
-        // Sinytra Connector
-        if (this.analyzer.has(GameComponentType.NEO_FORGE) && (hasMod("connector", ModLoaderType.NEO_FORGE) || hasMod("connectormod", ModLoaderType.NEO_FORGE))
-                || "1.20.1".equals(gameVersion) && this.analyzer.has(GameComponentType.FORGE) && hasMod("connectormod", ModLoaderType.FORGE)) {
-            supportedLoaders.add(ModLoaderType.FABRIC);
+    public void removeMods(LocalModFile... localModFiles) throws IOException {
+        for (LocalModFile localModFile : localModFiles) {
+            localModFile.delete();
         }
     }
 

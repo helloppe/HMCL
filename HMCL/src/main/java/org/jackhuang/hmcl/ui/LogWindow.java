@@ -1,5 +1,20 @@
-// SPDX-FileCopyrightText: Copyright (C) 2020 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui;
 
 import com.jfoenix.controls.*;
@@ -25,6 +40,7 @@ import org.jackhuang.hmcl.theme.Themes;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.util.CircularArrayList;
+import org.jackhuang.hmcl.util.Lang;
 import org.jackhuang.hmcl.util.Log4jLevel;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
@@ -36,7 +52,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
@@ -85,8 +104,6 @@ public final class LogWindow extends Stage {
         }
 
         this.gameProcess = gameProcess;
-
-        FXUtils.addMacOSCloseWindowHandler(this, () -> !gameProcess.isRunning());
     }
 
     public void logLine(Log log) {
@@ -147,7 +164,6 @@ public final class LogWindow extends Stage {
 
         private final ListView<Log> listView = new JFXListView<>();
         private final BooleanProperty autoScroll = new SimpleBooleanProperty();
-        private final BooleanProperty wrapText = new SimpleBooleanProperty(true);
         private final StringProperty[] buttonText = new StringProperty[LEVELS.length];
         private final BooleanProperty[] showLevel = new BooleanProperty[LEVELS.length];
         private final JFXButton btnAlwaysOnTop = FXUtils.newToggleButton4(SVG.KEEP, 20);
@@ -158,6 +174,7 @@ public final class LogWindow extends Stage {
         LogWindowImpl() {
             getStyleClass().add("log-window");
 
+            listView.getStyleClass().add("no-horizontal-scrollbar");
             listView.getProperties().put("no-smooth-scrolling", true);
             listView.setItems(FXCollections.observableList(new CircularArrayList<>(logs.size())));
 
@@ -307,33 +324,18 @@ public final class LogWindow extends Stage {
                         listView.scrollTo(listView.getItems().size() - 1);
                 });
 
-                listView.setStyle("-fx-font-family: \"" + Objects.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT)
+                listView.setStyle("-fx-font-family: \"" + Lang.requireNonNullElse(settings().logFontFamilyProperty().get(), FXUtils.DEFAULT_MONOSPACE_FONT)
                         + "\"; -fx-font-size: " + settings().logFontSizeProperty().get() + "px;");
                 listView.setCellFactory(x -> new ListCell<>() {
                     {
                         getStyleClass().add("log-window-list-cell");
                         Region clippedContainer = (Region) listView.lookup(".clipped-container");
                         if (clippedContainer != null) {
-                            wrapTextProperty().addListener((obs, oldWrap, nowWrap) -> {
-                                if (nowWrap) {
-                                    maxWidthProperty().bind(clippedContainer.widthProperty());
-                                    prefWidthProperty().bind(clippedContainer.widthProperty());
-                                    listView.getStyleClass().add("no-horizontal-scrollbar");
-                                } else {
-                                    maxWidthProperty().unbind();
-                                    prefWidthProperty().unbind();
-
-                                    setMaxWidth(Region.USE_PREF_SIZE);
-                                    setPrefWidth(Region.USE_COMPUTED_SIZE);
-                                    listView.getStyleClass().remove("no-horizontal-scrollbar");
-                                }
-
-                                // only for horizontal scrollbar
-                                listView.requestLayout();
-                            });
+                            maxWidthProperty().bind(clippedContainer.widthProperty());
+                            prefWidthProperty().bind(clippedContainer.widthProperty());
                         }
                         setPadding(new Insets(2));
-                        wrapTextProperty().bind(control.wrapText);
+                        setWrapText(true);
                         setGraphic(null);
                     }
 
@@ -393,10 +395,6 @@ public final class LogWindow extends Stage {
                 autoScrollCheckBox.setSelected(true);
                 control.autoScroll.bind(autoScrollCheckBox.selectedProperty());
 
-                JFXCheckBox wrapTextCheckBox = new JFXCheckBox(i18n("logwindow.wrap_text"));
-                wrapTextCheckBox.setSelected(true);
-                control.wrapText.bind(wrapTextCheckBox.selectedProperty());
-
                 JFXButton exportLogsButton = new JFXButton(i18n("button.export"));
                 exportLogsButton.setOnAction(e -> getSkinnable().onExportLogs());
 
@@ -416,7 +414,7 @@ public final class LogWindow extends Stage {
 
                 JFXButton clearButton = new JFXButton(i18n("button.clear"));
                 clearButton.setOnAction(e -> getSkinnable().onClear());
-                hBox.getChildren().setAll(autoScrollCheckBox, wrapTextCheckBox, exportLogsButton, terminateButton, exportDumpPane, clearButton);
+                hBox.getChildren().setAll(autoScrollCheckBox, exportLogsButton, terminateButton, exportDumpPane, clearButton);
 
                 control.getGameProcess().getProcess()
                         .onExit()

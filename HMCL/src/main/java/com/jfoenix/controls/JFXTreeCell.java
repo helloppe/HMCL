@@ -28,7 +28,6 @@ import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
 
@@ -84,7 +83,8 @@ public class JFXTreeCell<T> extends TreeCell<T> {
                 treeItemRef = new WeakReference<>(newTreeItem);
             }
         };
-        treeItemProperty().addListener(treeItemInvalidationListener);
+        final WeakInvalidationListener weakTreeItemListener = new WeakInvalidationListener(treeItemInvalidationListener);
+        treeItemProperty().addListener(weakTreeItemListener);
         if (getTreeItem() != null) {
             getTreeItem().graphicProperty().addListener(weakTreeItemGraphicListener);
         }
@@ -104,20 +104,13 @@ public class JFXTreeCell<T> extends TreeCell<T> {
         selectedPane.setVisible(isSelected());
     }
 
-    /// Updates the text and graphic for the current value and tree item.
-    ///
-    /// @implSpec Called when the cell value or the current tree item's graphic changes.
-    /// Subclasses may override this method to decorate the default display.
-    ///
-    /// @param item the cell value, or `null` to clear the display
-    /// @param empty whether the cell has no item
-    protected void updateDisplay(@Nullable T item, boolean empty) {
+    private void updateDisplay(T item, boolean empty) {
         if (item == null || empty) {
             hbox = null;
             setText(null);
             setGraphic(null);
         } else {
-            @Nullable TreeItem<T> treeItem = getTreeItem();
+            TreeItem<T> treeItem = getTreeItem();
             if (treeItem != null && treeItem.getGraphic() != null) {
                 if (item instanceof Node) {
                     setText(null);

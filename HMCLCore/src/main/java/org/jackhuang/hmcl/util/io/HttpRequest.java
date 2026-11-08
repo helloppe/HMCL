@@ -1,11 +1,27 @@
-// SPDX-FileCopyrightText: Copyright (C) 2021 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.util.io;
 
 import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.util.Pair;
+import org.jackhuang.hmcl.util.function.ExceptionalBiConsumer;
 import org.jackhuang.hmcl.util.function.ExceptionalSupplier;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 
@@ -13,6 +29,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -30,6 +47,7 @@ public abstract class HttpRequest {
     protected final String url;
     protected final String method;
     protected final Map<String, String> headers = new HashMap<>();
+    protected ExceptionalBiConsumer<URL, Integer, IOException> responseCodeTester;
     protected final Set<Integer> toleratedHttpCodes = new HashSet<>();
     protected int retryTimes = 1;
     protected boolean ignoreHttpCode;
@@ -53,6 +71,10 @@ public abstract class HttpRequest {
 
     public HttpRequest authorization(String tokenType, String tokenString) {
         return authorization(tokenType + " " + tokenString);
+    }
+
+    public HttpRequest authorization(Authorization authorization) {
+        return authorization(authorization.getTokenType(), authorization.getAccessToken());
     }
 
     public HttpRequest header(String key, String value) {
@@ -142,15 +164,11 @@ public abstract class HttpRequest {
     }
 
     public static class HttpGetRequest extends HttpSimpleRequest {
-        protected HttpGetRequest(String url) {
-            super(url, "GET");
-        }
+        protected HttpGetRequest(String url) { super(url, "GET"); }
     }
 
     public static class HttpDeleteRequest extends HttpSimpleRequest {
-        protected HttpDeleteRequest(String url) {
-            super(url, "DELETE");
-        }
+        protected HttpDeleteRequest(String url) { super(url, "DELETE"); }
     }
 
     @SuppressWarnings("unchecked")
@@ -205,15 +223,11 @@ public abstract class HttpRequest {
     }
 
     public static final class HttpPostRequest extends HttpEntityRequest<HttpPostRequest> {
-        private HttpPostRequest(String url) {
-            super(url, "POST");
-        }
+        private HttpPostRequest(String url) { super(url, "POST"); }
     }
 
     public static final class HttpPutRequest extends HttpEntityRequest<HttpPutRequest> {
-        private HttpPutRequest(String url) {
-            super(url, "PUT");
-        }
+        private HttpPutRequest(String url) { super(url, "PUT"); }
     }
 
     public static HttpGetRequest GET(String url) {
@@ -259,5 +273,11 @@ public abstract class HttpRequest {
             }
         }
         throw new IOException("retry 0");
+    }
+
+    public interface Authorization {
+        String getTokenType();
+
+        String getAccessToken();
     }
 }

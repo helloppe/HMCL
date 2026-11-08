@@ -1,22 +1,35 @@
-// SPDX-FileCopyrightText: Copyright (C) 2026 The HMCL Authors
-// SPDX-License-Identifier: GPL-3.0-or-later WITH AdditionRef-HMCL
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.task;
 
-import org.glavo.url.WebURL;
-import org.jackhuang.hmcl.download.DownloadCandidate;
-import org.jackhuang.hmcl.download.DownloadCandidates;
 import org.jackhuang.hmcl.event.Event;
+import org.jackhuang.hmcl.event.EventBus;
 import org.jackhuang.hmcl.event.EventManager;
 import org.jackhuang.hmcl.util.*;
 import org.jackhuang.hmcl.util.io.*;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URLConnection;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
@@ -26,37 +39,40 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.jackhuang.hmcl.util.Lang.*;
+import static org.jackhuang.hmcl.util.Lang.threadPool;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Downloads candidate URLs in order, with retries, HTTP caching, and supported range resumption.
-@NotNullByDefault
-public abstract class FetchTask<T extends @UnknownNullability Object> extends Task<T> {
+public abstract class FetchTask<T> extends Task<T> {
 
     protected static final int DEFAULT_RETRY = 5;
 
-    protected final DownloadCandidates candidates;
+    protected final List<URI> uris;
+    protected int retry = DEFAULT_RETRY;
     protected CacheRepository repository = CacheRepository.getInstance();
 
-    /// Creates a download task with a snapshot of the candidate URLs.
-    ///
-    /// @param candidates nonempty candidate URLs, with no null elements
-    /// @throws IllegalArgumentException if no candidates are supplied
-    /// @throws NullPointerException if the list or any element is null
-    public FetchTask(DownloadCandidates candidates) {
-        this.candidates = candidates;
+    public FetchTask(@NotNull List<@NotNull URI> uris) {
+        Objects.requireNonNull(uris);
+
+        this.uris = List.copyOf(uris);
+
+        if (this.uris.isEmpty())
+            throw new IllegalArgumentException("At least one URL is required");
+
         setExecutor(DOWNLOAD_EXECUTOR);
+    }
+
+    public void setRetry(int retry) {
+        if (retry <= 0)
+            throw new IllegalArgumentException("Retry count must be greater than 0");
+
+        this.retry = retry;
     }
 
     public void setCacheRepository(CacheRepository repository) {
         this.repository = repository;
     }
 
-    /// Invoked before each download attempt, after any cache lookup.
-    ///
-    /// @param url the candidate URL before redirects
-    /// @throws IOException if the attempt cannot be prepared
-    protected void beforeDownload(WebURL url) throws IOException {
+    protected void beforeDownload(URI uri) throws IOException {
     }
 
     protected abstract void useCachedResult(Path cachedFile) throws IOException;
@@ -80,29 +96,17 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
             }
         }
 
-        @Nullable ArrayList<DownloadException> exceptions = null;
+        ArrayList<DownloadException> exceptions = null;
 
         if (SEMAPHORE != null)
             SEMAPHORE.acquire();
         try {
-            for (DownloadCandidate candidate : candidates.getCandidates()) {
-                WebURL url = candidate.url();
-                if (url == null) {
-                    if (exceptions == null)
-                        exceptions = new ArrayList<>();
-                    exceptions.add(new DownloadException(candidate.rawUrl(), new MalformedURLException("Invalid URL: " + candidate)));
-                    continue;
-                }
-
-                int retry = candidate.retry() >= 0 ? candidate.retry() : DEFAULT_RETRY;
-                Duration connectTimeout = Objects.requireNonNullElse(candidate.connectTimeout(), NetworkUtils.TIMEOUT);
-                Duration readTimeout = Objects.requireNonNullElse(candidate.readTimeout(), NetworkUtils.TIMEOUT);
-
+            for (URI uri : uris) {
                 try {
-                    if (NetworkUtils.isHttpUri(url))
-                        downloadHttp(url, retry, connectTimeout, readTimeout, checkETag);
+                    if (NetworkUtils.isHttpUri(uri))
+                        downloadHttp(uri, checkETag);
                     else
-                        downloadNotHttp(url, retry, connectTimeout, readTimeout);
+                        downloadNotHttp(uri);
                     return;
                 } catch (DownloadException e) {
                     if (exceptions == null)
@@ -151,20 +155,18 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
             if (strongETag == null && StringUtils.isBlank(lastModified))
                 return null;
 
-            return new HttpResumeContext(response.url(), contentLength, strongETag, lastModified);
+            return new HttpResumeContext(response.uri(), contentLength, strongETag, lastModified);
         }
 
-        /// Final response URL whose partial content is retained for resumption.
-        private final WebURL url;
+        private final URI uri;
         private final long contentLength;
         private final @Nullable String strongETag;
         private final @Nullable String lastModified;
 
         long countUncompressed;
 
-        /// Records the response URL, total byte length, and available validators for resumption.
-        private HttpResumeContext(WebURL url, long contentLength, @Nullable String strongETag, @Nullable String lastModified) {
-            this.url = url;
+        private HttpResumeContext(URI uri, long contentLength, @Nullable String strongETag, @Nullable String lastModified) {
+            this.uri = uri;
             this.contentLength = contentLength;
             this.strongETag = strongETag;
             this.lastModified = lastModified;
@@ -195,7 +197,7 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                 if (!strongETag.equals(eTag))
                     return false;
             } else {
-                if (!url.equals(response.url()))
+                if (!uri.equals(response.uri()))
                     return false;
 
                 String lastModified = response.headers().firstValue("last-modified").orElse("");
@@ -231,7 +233,7 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                           @Nullable FetchTask.HttpResumeContext resume, InputStream inputStream,
                           long contentLength,
                           ContentEncoding contentEncoding) throws IOException, InterruptedException {
-        boolean success;
+        boolean success = false;
         try (var counter = new CounterInputStream(inputStream);
              var input = contentEncoding.wrap(counter)) {
             long lastDownloaded = 0L;
@@ -277,50 +279,49 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
         }
     }
 
-    /// Downloads an HTTP candidate, following HTTP(S) redirects and retrying recoverable failures.
-    private void downloadHttp(WebURL url, int retry, Duration connectTimeout, Duration readTimeout, boolean checkETag) throws DownloadException, InterruptedException {
+    private void downloadHttp(URI uri, boolean checkETag) throws DownloadException, InterruptedException {
         if (checkETag) {
             // Handle cache
             try {
-                Path cache = repository.getCachedRemoteFile(url, true);
+                Path cache = repository.getCachedRemoteFile(uri, true);
                 useCachedResult(cache);
-                LOG.info("Using cached file for " + NetworkUtils.dropQuery(url));
+                LOG.info("Using cached file for " + NetworkUtils.dropQuery(uri));
                 return;
             } catch (IOException ignored) {
             }
         }
 
-        @Nullable Context context = null;
-        @Nullable HttpResumeContext resumeContext = null;
+        Context context = null;
+        HttpResumeContext resumeContext = null;
 
-        @Nullable ArrayList<Exception> exceptions = null;
+        ArrayList<Exception> exceptions = null;
 
         // If loading the cache fails, the cache should not be loaded again.
         boolean useCachedResult = true;
         try {
-            for (int attempts = 0, attemptsLimit = retry + 1; attempts < attemptsLimit; attempts++) {
+            for (int retryTime = 0, retryLimit = retry; retryTime < retryLimit; retryTime++) {
                 if (isCancelled()) {
                     throw new InterruptedException();
                 }
 
-                @Nullable List<WebURL> redirects = null;
+                List<URI> redirects = null;
                 try {
-                    beforeDownload(url);
+                    beforeDownload(uri);
                     updateProgress(0);
 
-                    @Nullable HttpURLConnection connection;
+                    HttpURLConnection connection = null;
                     UrlResponseInfo responseInfo;
-                    @Nullable String bmclapiHash;
+                    String bmclapiHash;
                     int responseCode;
 
-                    WebURL currentURI = url;
+                    URI currentURI = uri;
 
                     LinkedHashMap<String, String> headers = new LinkedHashMap<>();
                     headers.put("accept-encoding", "gzip");
 
                     boolean resumeRequested = resumeContext != null && resumeContext.hasPartialContent();
                     if (useCachedResult && checkETag && !resumeRequested)
-                        headers.putAll(repository.injectConnection(url));
+                        headers.putAll(repository.injectConnection(uri));
                     if (resumeRequested) {
                         headers.put("range", "bytes=" + resumeContext.countUncompressed + "-");
                         headers.put("if-range", resumeContext.ifRange());
@@ -328,8 +329,6 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
 
                     do {
                         connection = NetworkUtils.createHttpConnection(currentURI);
-                        connection.setConnectTimeout((int) connectTimeout.toMillis());
-                        connection.setReadTimeout((int) readTimeout.toMillis());
                         boolean keepConnection = false;
                         try {
                             headers.forEach(connection::setRequestProperty);
@@ -341,7 +340,7 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                                 Optional<Path> cache = repository.checkExistentFile(null, "SHA-1", bmclapiHash);
                                 if (cache.isPresent()) {
                                     useCachedResult(cache.get());
-                                    LOG.info("Using cached file for " + NetworkUtils.dropQuery(url));
+                                    LOG.info("Using cached file for " + NetworkUtils.dropQuery(uri));
                                     return;
                                 }
                             }
@@ -353,15 +352,15 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                                     throw new IOException("Too much redirects");
                                 }
 
-                                @Nullable String location = connection.getHeaderField("Location");
+                                String location = connection.getHeaderField("Location");
                                 if (StringUtils.isBlank(location))
                                     throw new IOException("Redirected to an empty location");
 
-                                WebURL target = currentURI.resolve(location);
+                                URI target = currentURI.resolve(NetworkUtils.encodeLocation(location));
                                 redirects.add(target);
 
                                 if (!NetworkUtils.isHttpUri(target))
-                                    throw new IOException("Redirected to non-HTTP URL: " + target);
+                                    throw new IOException("Redirected to not http URI: " + target);
 
                                 currentURI = target;
                             } else {
@@ -376,39 +375,39 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                         }
                     } while (true);
 
-                    @Nullable InputStream inputStream = null;
+                    InputStream inputStream = null;
                     boolean responseBodyConsumed = false;
                     try {
                         if (resumeRequested && responseCode == 416) {
                             resumeContext = null;
                             discardContext(context);
                             context = null;
-                            attemptsLimit++;
+                            retryLimit++;
                             continue;
                         }
 
                         if (useCachedResult && responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
                             // Handle cache
                             try {
-                                Path cache = repository.getCachedRemoteFile(responseInfo.url(), false);
+                                Path cache = repository.getCachedRemoteFile(responseInfo.uri(), false);
                                 useCachedResult(cache);
-                                LOG.info("Using cached file for " + NetworkUtils.dropQuery(url));
+                                LOG.info("Using cached file for " + NetworkUtils.dropQuery(uri));
                                 return;
                             } catch (CacheRepository.CacheExpiredException e) {
-                                LOG.info("Cache expired for " + NetworkUtils.dropQuery(url));
+                                LOG.info("Cache expired for " + NetworkUtils.dropQuery(uri));
                             } catch (IOException e) {
-                                LOG.warning("Unable to use cached file, redownload " + NetworkUtils.dropQuery(url), e);
+                                LOG.warning("Unable to use cached file, redownload " + NetworkUtils.dropQuery(uri), e);
                                 repository.removeRemoteEntry(currentURI);
                                 useCachedResult = false;
                                 // Now we must reconnect the server since 304 may result in empty content,
                                 // if we want to redownload the file, we must reconnect the server without etag settings.
-                                attemptsLimit++;
+                                retryLimit++;
                                 continue;
                             }
                         } else if (responseCode / 100 == 4) {
-                            throw new FileNotFoundException(url.toString());
+                            throw new FileNotFoundException(uri.toString());
                         } else if (responseCode / 100 != 2) {
-                            throw new ResponseCodeException(url, responseCode);
+                            throw new ResponseCodeException(uri, responseCode);
                         }
 
                         long contentLength = responseInfo.headers().firstValueAsLong("content-length").orElse(-1L);
@@ -420,13 +419,13 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                         } else if (resumeRequested) {
                             if (resumeContext.canResume(responseCode, responseInfo)) {
                                 // Resume download
-                                LOG.info("Resuming " + resumeContext.url + " from " + resumeContext.countUncompressed);
+                                LOG.info("Resuming " + resumeContext.uri + " from " + resumeContext.countUncompressed);
                             } else {
                                 // Failed to resume download, so we will retry from the beginning
                                 resumeContext = null;
                                 discardContext(context);
                                 context = null;
-                                attemptsLimit++;
+                                retryLimit++;
                                 continue;
                             }
                         } else {
@@ -470,17 +469,17 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                 } catch (InterruptedException e) {
                     throw e;
                 } catch (FileNotFoundException ex) {
-                    LOG.warning("Failed to download " + url + ", not found" + (redirects == null ? "" : ", redirects: " + redirects), ex);
-                    throw toDownloadException(url, ex, exceptions); // we will not try this URL again
+                    LOG.warning("Failed to download " + uri + ", not found" + (redirects == null ? "" : ", redirects: " + redirects), ex);
+                    throw toDownloadException(uri, ex, exceptions); // we will not try this URL again
                 } catch (Exception ex) {
                     if (exceptions == null)
                         exceptions = new ArrayList<>();
 
                     exceptions.add(ex);
 
-                    LOG.warning("Failed to download " + url + ", repeat times: " + attempts + (redirects == null ? "" : ", redirects: " + redirects), ex);
+                    LOG.warning("Failed to download " + uri + ", repeat times: " + retryTime + (redirects == null ? "" : ", redirects: " + redirects), ex);
 
-                    if (attempts < attemptsLimit - 1) {
+                    if (retryTime < retryLimit - 1) {
                         // Wait for a while before retrying
                         Thread.sleep(200);
                     }
@@ -491,12 +490,12 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
                 try {
                     context.close();
                 } catch (IOException e) {
-                    LOG.warning("Failed to close context for " + NetworkUtils.dropQuery(url), e);
+                    LOG.warning("Failed to close context for " + NetworkUtils.dropQuery(uri), e);
                 }
             }
         }
 
-        throw toDownloadException(url, null, exceptions);
+        throw toDownloadException(uri, null, exceptions);
     }
 
     /// Disconnects an HTTP URL connection whose response body will not be consumed.
@@ -512,21 +511,18 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
         }
     }
 
-    /// Downloads a non-HTTP candidate through its installed URL handler, retrying I/O failures.
-    private void downloadNotHttp(WebURL url, int retry, Duration connectTimeout, Duration readTimeout) throws DownloadException, InterruptedException {
-        @Nullable ArrayList<Exception> exceptions = null;
-        for (int attempts = 0, attemptsLimit = retry + 1; attempts < attemptsLimit; attempts++) {
+    private void downloadNotHttp(URI uri) throws DownloadException, InterruptedException {
+        ArrayList<Exception> exceptions = null;
+        for (int retryTime = 0; retryTime < retry; retryTime++) {
             if (isCancelled()) {
                 throw new InterruptedException();
             }
 
             try {
-                beforeDownload(url);
+                beforeDownload(uri);
                 updateProgress(0);
 
-                URLConnection conn = NetworkUtils.createConnection(url);
-                conn.setConnectTimeout((int) connectTimeout.toMillis());
-                conn.setReadTimeout((int) readTimeout.toMillis());
+                URLConnection conn = NetworkUtils.createConnection(uri);
                 try (Context context = getContext()) {
                     download(context,
                             null, conn.getInputStream(),
@@ -537,25 +533,24 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
             } catch (InterruptedException e) {
                 throw e;
             } catch (FileNotFoundException ex) {
-                LOG.warning("Failed to download " + url + ", not found", ex);
+                LOG.warning("Failed to download " + uri + ", not found", ex);
 
-                throw toDownloadException(url, ex, exceptions); // we will not try this URL again
+                throw toDownloadException(uri, ex, exceptions); // we will not try this URL again
             } catch (Exception ex) {
                 if (exceptions == null)
                     exceptions = new ArrayList<>();
 
                 exceptions.add(ex);
-                LOG.warning("Failed to download " + url + ", repeat times: " + attempts, ex);
+                LOG.warning("Failed to download " + uri + ", repeat times: " + retryTime, ex);
             }
         }
 
-        throw toDownloadException(url, null, exceptions);
+        throw toDownloadException(uri, null, exceptions);
     }
 
-    /// Wraps the final failure and attaches preceding failures as suppressed exceptions.
-    private static DownloadException toDownloadException(WebURL url, @Nullable Exception last, @Nullable ArrayList<Exception> exceptions) {
+    private static DownloadException toDownloadException(URI uri, @Nullable Exception last, @Nullable ArrayList<Exception> exceptions) {
         if (exceptions == null || exceptions.isEmpty()) {
-            return new DownloadException(url, last != null
+            return new DownloadException(uri, last != null
                     ? last
                     : new IOException("No exceptions"));
         } else {
@@ -565,13 +560,13 @@ public abstract class FetchTask<T extends @UnknownNullability Object> extends Ta
             for (Exception e : exceptions) {
                 last.addSuppressed(e);
             }
-            return new DownloadException(url, last);
+            return new DownloadException(uri, last);
         }
     }
 
     private static final Timer timer = new Timer("DownloadSpeedRecorder", true);
     private static final AtomicLong downloadSpeed = new AtomicLong(0L);
-    public static final EventManager<SpeedEvent> SPEED_EVENT = new EventManager<>();
+    public static final EventManager<SpeedEvent> SPEED_EVENT = EventBus.EVENT_BUS.channel(SpeedEvent.class);
 
     static {
         timer.schedule(new TimerTask() {
